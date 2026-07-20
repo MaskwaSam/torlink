@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import { TextField } from "./TextField";
 import { Panel } from "./Panel";
 import { COLOR, ICON } from "../theme";
+import { terminalSafeText } from "../../util/format";
 
 interface SearchBarProps {
   width: number;
@@ -24,6 +25,8 @@ export function SearchBar({
   onExitDown,
   onExitLeft,
 }: SearchBarProps) {
+  const displayValue = terminalSafeText(value);
+  const displayPlaceholder = terminalSafeText(placeholder);
   return (
     <Panel title="search" width={width} focused={editing} height={2}>
       <Box>
@@ -38,10 +41,10 @@ export function SearchBar({
               onExitDown={onExitDown}
               onExitLeft={onExitLeft}
             />
-          ) : value ? (
-            <Text wrap="truncate-end">{value}</Text>
+          ) : displayValue ? (
+            <Text wrap="truncate-end">{displayValue}</Text>
           ) : (
-            <Text dimColor>{placeholder}</Text>
+            <Text dimColor>{displayPlaceholder}</Text>
           )}
         </Box>
       </Box>

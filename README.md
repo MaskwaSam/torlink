@@ -28,9 +28,11 @@ Type what you're looking for and press Enter. Results stream in from every sourc
 
 ## Your downloads
 
-Active downloads sit up top with their progress, speed, and time left; when one finishes it drops into Recently downloaded just below, so the list stays tidy. Everything's still there when you come back, and anything interrupted picks up where it left off.
+Active downloads sit up top with their progress, speed, and time left; when one finishes it drops into Recently downloaded just below, so the list stays tidy. Everything's still there when you come back, and anything interrupted picks up where it left off. Press `a` to toggle torrent auto-resume if you want unfinished downloads and active seeds to stay paused after a restart or VPN reconnect. Press `e` to toggle auto-stop seeding if you want finished downloads to stop instead of seeding automatically. Press `v` to toggle the Surfshark VPN requirement.
 
 Downloads run in the background while you keep searching, so you can queue up as many as you want. They save to your downloads folder, and the Downloads pane keeps tabs on each one. When something finishes it keeps seeding automatically so the next person can find it too, and the Seeding tab lets you pause or stop that anytime.
+
+The Sources pane lets you turn individual providers on or off, including FitGirl, YTS, TPB Movies, TPB Books, 1337x Movies, and 1337x Books. Disabled sources are skipped during search.
 
 <p align="center">
   <img src="preview/downloads.svg" alt="torlink's Downloads pane: live progress on top, recently downloaded below" style="max-width: 832px; width: 100%; height: auto;">
@@ -46,6 +48,8 @@ A short, hand-picked list of trusted sources:
 | Movies | YTS, The Pirate Bay, 1337x |
 | TV | EZTV, The Pirate Bay, 1337x |
 | Anime | Nyaa, SubsPlease |
+| Books | The Pirate Bay, 1337x |
+| Audiobooks | The Pirate Bay, 1337x |
 
 Games are the only category that can run code, so they come from FitGirl alone, a repacker with a long, trusted track record; everything else is plain video and subtitles. If a source is down, the search carries on without it, and torlink tells you which one is offline.
 

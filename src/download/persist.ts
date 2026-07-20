@@ -1,8 +1,9 @@
 import { promises as fs, mkdirSync, writeFileSync, renameSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { queueFile, seedsFile, torrentsDir } from "../config/paths";
+import { parseInfoHash } from "../sources/magnet";
 import { serializeWrites, writeJsonAtomic } from "../util/atomic";
-import type { QueueItem } from "./types";
+import type { PauseReason, QueueItem } from "./types";
 
 const write = serializeWrites();
 
@@ -19,10 +20,17 @@ export function saveQueueSync(items: QueueItem[]): void {
   } catch {}
 }
 
-function isQueueItem(v: unknown): v is QueueItem {
-  if (!v || typeof v !== "object") return false;
+function toQueueItem(v: unknown): QueueItem | null {
+  if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
-  return typeof r.id === "string" && typeof r.magnet === "string";
+  if (typeof r.id !== "string" || typeof r.magnet !== "string") return null;
+  const id = parseInfoHash(r.id);
+  if (!id) return null;
+  return {
+    ...r,
+    id,
+    pauseReason: r.pauseReason === "network" ? "network" : undefined,
+  } as QueueItem;
 }
 
 export async function loadQueue(): Promise<QueueItem[]> {
@@ -34,7 +42,9 @@ export async function loadQueue(): Promise<QueueItem[]> {
   }
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isQueueItem) : [];
+    return Array.isArray(parsed)
+      ? parsed.map(toQueueItem).filter((item): item is QueueItem => item !== null)
+      : [];
   } catch {
     return [];
   }
@@ -48,6 +58,7 @@ export type PersistedSeedStatus = "seeding" | "paused";
 export interface SeedRecord {
   id: string;
   status: PersistedSeedStatus;
+  pauseReason?: PauseReason;
 }
 
 export function saveSeeds(records: SeedRecord[]): Promise<void> {
@@ -66,11 +77,20 @@ export function saveSeedsSync(records: SeedRecord[]): void {
 // --- per-torrent .torrent metadata cache ------------------------------------
 
 export function torrentMetaPath(id: string): string {
-  return path.join(torrentsDir, `${id}.torrent`);
+  const infoHash = parseInfoHash(id);
+  if (!infoHash) throw new Error("invalid torrent metadata id");
+  const root = path.resolve(torrentsDir);
+  const file = path.resolve(root, `${infoHash}.torrent`);
+  if (path.dirname(file) !== root) throw new Error("invalid torrent metadata path");
+  return file;
 }
 
 export function torrentMetaExists(id: string): boolean {
-  return existsSync(torrentMetaPath(id));
+  try {
+    return existsSync(torrentMetaPath(id));
+  } catch {
+    return false;
+  }
 }
 
 export async function saveTorrentMeta(id: string, data: Uint8Array): Promise<void> {
@@ -103,11 +123,17 @@ export async function loadSeeds(): Promise<SeedRecord[]> {
     for (const el of parsed) {
       // Legacy format was a bare id array; treat each as a seeding entry.
       if (typeof el === "string") {
-        out.push({ id: el, status: "seeding" });
+        const id = parseInfoHash(el);
+        if (id) out.push({ id, status: "seeding" });
       } else if (el && typeof el === "object") {
         const r = el as Record<string, unknown>;
-        if (typeof r.id === "string" && (r.status === "seeding" || r.status === "paused")) {
-          out.push({ id: r.id, status: r.status });
+        const id = typeof r.id === "string" ? parseInfoHash(r.id) : null;
+        if (id && (r.status === "seeding" || r.status === "paused")) {
+          out.push({
+            id,
+            status: r.status,
+            pauseReason: r.pauseReason === "network" ? "network" : undefined,
+          });
         }
       }
     }

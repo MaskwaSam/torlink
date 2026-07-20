@@ -1,4 +1,4 @@
-import { fetchResilient, HttpError, USER_AGENT } from "../util/net";
+import { fetchResilient, HttpError, readResponseJson, USER_AGENT } from "../util/net";
 import { parseMagnet } from "./magnet";
 import type { SearchOptions, Source, TorrentResult } from "./types";
 
@@ -40,7 +40,7 @@ async function search(query: string, opts: SearchOptions = {}): Promise<TorrentR
   });
   if (!res.ok) throw new HttpError(res.status, `SubsPlease returned ${res.status}`);
 
-  const json = (await res.json()) as Record<string, SpEntry> | unknown[];
+  const json = await readResponseJson<Record<string, SpEntry> | unknown[]>(res);
   if (!json || Array.isArray(json)) return [];
 
   const out: TorrentResult[] = [];

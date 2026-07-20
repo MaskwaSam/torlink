@@ -1,17 +1,6 @@
-const TRACKERS = [
-  "udp://tracker.opentrackr.org:1337/announce",
-  "udp://open.demonii.com:1337/announce",
-  "udp://tracker.openbittorrent.com:6969/announce",
-  "udp://tracker.torrent.eu.org:451/announce",
-  "udp://exodus.desync.com:6969/announce",
-  "udp://open.stealth.si:80/announce",
-  "udp://tracker.dler.org:6969/announce",
-];
-
 export function buildMagnet(infoHash: string, name: string): string {
   const dn = encodeURIComponent(name);
-  const tr = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
-  return `magnet:?xt=urn:btih:${infoHash}&dn=${dn}${tr}`;
+  return `magnet:?xt=urn:btih:${infoHash}&dn=${dn}`;
 }
 
 const MAGNET_RE = /xt=urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i;
@@ -40,6 +29,14 @@ export function normalizeInfoHash(raw: string): string {
   return raw.length === 32 ? (base32ToHex(raw) ?? raw.toLowerCase()) : raw.toLowerCase();
 }
 
+const HEX_INFOHASH_RE = /^[a-f0-9]{40}$/;
+
+export function parseInfoHash(input: string): string | null {
+  if (!isInfoHash(input)) return null;
+  const normalized = normalizeInfoHash(input.trim());
+  return HEX_INFOHASH_RE.test(normalized) ? normalized : null;
+}
+
 export interface ParsedMagnet {
   infoHash: string;
   name: string;
@@ -51,7 +48,8 @@ export function parseMagnet(input: string): ParsedMagnet | null {
   if (!/^magnet:\?/i.test(s)) return null;
   const m = MAGNET_RE.exec(s);
   if (!m) return null;
-  const infoHash = normalizeInfoHash(m[1]!);
+  const infoHash = parseInfoHash(m[1]!);
+  if (!infoHash) return null;
   let name = infoHash;
   try {
     const dn = new URL(s).searchParams.get("dn");
@@ -70,14 +68,14 @@ export function isInfoHash(input: string): boolean {
 }
 
 // Accepts either a magnet URI or a bare info hash. A bare hash is normalized and
-// wrapped with the default public trackers via buildMagnet, so it downloads over
-// the DHT (enabled by default in the Node client) plus those trackers, exactly
-// like any other magnet. Returns null for anything that is neither.
+// wrapped as a magnet. TorLink itself keeps tracker discovery disabled at the
+// engine layer, so downloads rely on DHT/manual peers even when a magnet carries
+// tracker parameters for portability. Returns null for anything that is neither.
 export function parseInput(input: string): ParsedMagnet | null {
   const s = input.trim();
   const magnet = parseMagnet(s);
   if (magnet) return magnet;
-  if (!isInfoHash(s)) return null;
-  const infoHash = normalizeInfoHash(s);
+  const infoHash = parseInfoHash(s);
+  if (!infoHash) return null;
   return { infoHash, name: infoHash, magnet: buildMagnet(infoHash, infoHash) };
 }

@@ -3,13 +3,14 @@ import type { Config } from "../config/config";
 import type { DownloadQueue } from "../download/queue";
 import type { HistoryItem } from "../download/history";
 import type { QueueItem, SeedItem } from "../download/types";
+import type { VpnStatus } from "../security/vpn";
 import type { SourceGroup, SourceId } from "../sources/types";
 
 export type View = "splash" | "browser";
 
-export type Category = "all" | "games" | "movies" | "tv" | "anime";
+export type Category = "all" | "games" | "movies" | "tv" | "anime" | "books" | "audiobooks";
 
-export type Section = Category | "downloads" | "seeding";
+export type Section = Category | "downloads" | "seeding" | "sources";
 
 export const CATEGORIES: { key: Category; label: string; group?: SourceGroup }[] = [
   { key: "all", label: "All" },
@@ -17,6 +18,8 @@ export const CATEGORIES: { key: Category; label: string; group?: SourceGroup }[]
   { key: "movies", label: "Movies", group: "Movies" },
   { key: "tv", label: "TV", group: "TV" },
   { key: "anime", label: "Anime", group: "Anime" },
+  { key: "books", label: "Books", group: "Books" },
+  { key: "audiobooks", label: "Audiobooks", group: "Audiobooks" },
 ];
 
 export type Region = "sidebar" | "content" | "help";
@@ -31,6 +34,8 @@ export interface Store {
   config: Config;
   setConfig: (c: Config) => void;
   queue: DownloadQueue;
+  vpn: VpnStatus;
+  networkAllowed: boolean;
 
   view: View;
   setView: (v: View) => void;

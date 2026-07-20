@@ -32,13 +32,23 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+export const WEBTORRENT_OPTIONS = {
+  tracker: false,
+  lsd: false,
+  utPex: false,
+  natUpnp: false,
+  natPmp: false,
+} as const;
+
 export class TorrentEngine {
   private client: WebTorrent | null = null;
   private torrents = new Map<string, Torrent>();
 
   private ensureClient(): WebTorrent {
     if (!this.client) {
-      this.client = new WebTorrent();
+      // Keep peer discovery on DHT/manual peers only. The tracker client stack
+      // currently carries a high-severity transitive advisory via `ip`.
+      this.client = new WebTorrent(WEBTORRENT_OPTIONS);
       this.client.on("error", () => {});
     }
     return this.client;

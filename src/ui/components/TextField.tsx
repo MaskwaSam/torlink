@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Text, useInput } from "ink";
+import { terminalSafeText } from "../../util/format";
 
 export interface TextFieldProps {
   isDisabled?: boolean;
@@ -122,24 +123,27 @@ export function TextField({
   );
 
   if (isDisabled) {
-    return value ? <Text>{value}</Text> : <Text dimColor>{placeholder}</Text>;
+    const displayValue = terminalSafeText(value);
+    const displayPlaceholder = terminalSafeText(placeholder);
+    return displayValue ? <Text>{displayValue}</Text> : <Text dimColor>{displayPlaceholder}</Text>;
   }
 
   if (value.length === 0) {
-    if (placeholder) {
+    const displayPlaceholder = terminalSafeText(placeholder);
+    if (displayPlaceholder) {
       return (
         <Text>
-          <Text inverse>{placeholder[0]}</Text>
-          <Text dimColor>{placeholder.slice(1)}</Text>
+          <Text inverse>{displayPlaceholder[0]}</Text>
+          <Text dimColor>{displayPlaceholder.slice(1)}</Text>
         </Text>
       );
     }
     return <Text inverse>{CURSOR}</Text>;
   }
 
-  const before = value.slice(0, cursor);
-  const atChar = value[cursor] ?? CURSOR;
-  const after = cursor < value.length ? value.slice(cursor + 1) : "";
+  const before = terminalSafeText(value.slice(0, cursor));
+  const atChar = terminalSafeText(value[cursor] ?? CURSOR) || CURSOR;
+  const after = terminalSafeText(cursor < value.length ? value.slice(cursor + 1) : "");
   return (
     <Text>
       {before}

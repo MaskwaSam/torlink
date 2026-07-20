@@ -1,14 +1,18 @@
-import { fetchResilient, HttpError, USER_AGENT } from "../util/net";
-import { buildMagnet } from "./magnet";
+import { fetchResilient, HttpError, readResponseJson, USER_AGENT } from "../util/net";
+import { buildMagnet, parseInfoHash } from "./magnet";
 import type { SearchOptions, Source, SourceId, TorrentResult } from "./types";
 
 const API = "https://apibay.org";
 
 const MOVIE_CATS = new Set([201, 202, 207, 209]);
 const TV_CATS = new Set([205, 208]);
+const BOOK_CATS = new Set([601, 602]);
+const AUDIOBOOK_CATS = new Set([102]);
 
 const TOP_MOVIES = `${API}/precompiled/data_top100_207.json`;
 const TOP_TV = `${API}/precompiled/data_top100_208.json`;
+const TOP_BOOKS = `${API}/precompiled/data_top100_601.json`;
+const TOP_AUDIOBOOKS = `${API}/precompiled/data_top100_102.json`;
 
 interface ApibayItem {
   id?: string;
@@ -25,7 +29,7 @@ interface ApibayItem {
 const ZERO_HASH = "0000000000000000000000000000000000000000";
 
 function toResult(it: ApibayItem, source: SourceId): TorrentResult | null {
-  const infoHash = (it.info_hash ?? "").toLowerCase();
+  const infoHash = parseInfoHash(it.info_hash ?? "");
   if (!infoHash || infoHash === ZERO_HASH || it.id === "0") return null;
   const name = it.name || "Unknown";
   const numFiles = Number(it.num_files);
@@ -49,7 +53,7 @@ async function fetchItems(url: string, opts: SearchOptions): Promise<ApibayItem[
     retries: 1,
   });
   if (!res.ok) throw new HttpError(res.status, `Pirate Bay returned ${res.status}`);
-  const json = (await res.json()) as ApibayItem[];
+  const json = await readResponseJson<ApibayItem[]>(res);
   return Array.isArray(json) ? json : [];
 }
 
@@ -88,4 +92,21 @@ export const tpbTv: Source = {
   group: "TV",
   homepage: "https://thepiratebay.org",
   search: (query, opts = {}) => search(query, TV_CATS, TOP_TV, "tpb-tv", opts),
+};
+
+export const tpbBooks: Source = {
+  id: "tpb-books",
+  label: "TPB",
+  group: "Books",
+  homepage: "https://thepiratebay.org",
+  search: (query, opts = {}) => search(query, BOOK_CATS, TOP_BOOKS, "tpb-books", opts),
+};
+
+export const tpbAudiobooks: Source = {
+  id: "tpb-audiobooks",
+  label: "TPB",
+  group: "Audiobooks",
+  homepage: "https://thepiratebay.org",
+  search: (query, opts = {}) =>
+    search(query, AUDIOBOOK_CATS, TOP_AUDIOBOOKS, "tpb-audiobooks", opts),
 };

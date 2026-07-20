@@ -30,7 +30,8 @@ function statusCell(seed: SeedItem | undefined): { text: string; color?: string;
 }
 
 export function Seeding() {
-  const { queue, region, contentWidth, listRows, setNotice, setSeedFocus } = useStore();
+  const { queue, vpn, networkAllowed, region, contentWidth, listRows, setNotice, setSeedFocus } =
+    useStore();
   const history = useQueueHistory(queue);
   const seeds = useSeeds(queue);
   const focused = region === "content";
@@ -53,6 +54,11 @@ export function Seeding() {
       else if (input === "p") {
         const h = history[clamped];
         if (!h) return;
+        const seed = queue.getSeed(h.id);
+        if (seed?.status !== "seeding" && !networkAllowed) {
+          setNotice(vpn.reason);
+          return;
+        }
         queue.toggleSeeding(h);
         if (queue.getSeed(h.id)?.status === "missing") {
           setNotice(`${ICON.warn} That file isn't on disk anymore.`);

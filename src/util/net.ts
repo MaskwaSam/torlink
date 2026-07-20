@@ -22,6 +22,8 @@ export class HttpError extends Error {
 
 export const RETRY_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
+export const DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024;
+
 const DEFAULT_RETRIES = 5;
 const DEFAULT_BASE_MS = 500;
 const DEFAULT_CAP_MS = 20000;
@@ -60,6 +62,52 @@ export function backoffDelay(
   const jittered = Math.floor(rand() * exp);
   if (retryAfterMs !== undefined) return Math.max(jittered, retryAfterMs);
   return jittered;
+}
+
+function bodyTooLarge(res: Response, maxBytes: number): HttpError {
+  const where = res.url ? ` from ${res.url}` : "";
+  return new HttpError(res.status || 0, `Response body${where} exceeded ${maxBytes} bytes.`);
+}
+
+export async function readResponseText(
+  res: Response,
+  maxBytes = DEFAULT_MAX_BODY_BYTES,
+): Promise<string> {
+  const length = Number(res.headers?.get?.("content-length") ?? 0);
+  if (Number.isFinite(length) && length > maxBytes) throw bodyTooLarge(res, maxBytes);
+
+  if (!res.body) {
+    const text = await res.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) throw bodyTooLarge(res, maxBytes);
+    return text;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let out = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw bodyTooLarge(res, maxBytes);
+      }
+      out += decoder.decode(value, { stream: true });
+    }
+    return out + decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export async function readResponseJson<T = unknown>(
+  res: Response,
+  maxBytes = DEFAULT_MAX_BODY_BYTES,
+): Promise<T> {
+  return JSON.parse(await readResponseText(res, maxBytes)) as T;
 }
 
 export async function fetchResilient(

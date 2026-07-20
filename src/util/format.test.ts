@@ -7,6 +7,7 @@ import {
   formatRelative,
   formatEtaShort,
   cleanText,
+  terminalSafeText,
   truncate,
 } from "./format";
 
@@ -82,6 +83,27 @@ describe("cleanText", () => {
   it("strips junk glyphs and collapses whitespace", () => {
     expect(cleanText("Foo 🎬 Bar")).toBe("Foo Bar");
     expect(cleanText("🎬🎬")).toBe("Untitled");
+  });
+
+  it("strips terminal escapes before display cleanup", () => {
+    expect(cleanText("Safe \x1b[31mRed\x1b[0m")).toBe("Safe Red");
+  });
+});
+
+describe("terminalSafeText", () => {
+  it("strips ANSI CSI sequences", () => {
+    expect(terminalSafeText("A\x1b[2J\x1b[31mB\x1b[0mC")).toBe("ABC");
+  });
+
+  it("strips OSC hyperlinks and clipboard commands", () => {
+    expect(terminalSafeText("pre\x1b]8;;https://evil.test\x07label\x1b]8;;\x07post")).toBe(
+      "prelabelpost",
+    );
+    expect(terminalSafeText("pre\x1b]52;c;AAAA\x07post")).toBe("prepost");
+  });
+
+  it("strips remaining control bytes", () => {
+    expect(terminalSafeText("a\rb\nc\t\x81d")).toBe("abcd");
   });
 });
 

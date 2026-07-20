@@ -1,6 +1,7 @@
-import { fetchResilient, HttpError, USER_AGENT } from "../util/net";
+import { fetchResilient, HttpError, readResponseText, USER_AGENT } from "../util/net";
 import { unescapeEntities } from "./rss";
 import { parseSize } from "../util/format";
+import { parseInfoHash } from "./magnet";
 import type { SearchOptions, Source, SourceId, TorrentResult } from "./types";
 
 const HOSTS = ["1337x.to", "1337x.st", "x1337x.ws", "1337xx.to"];
@@ -8,6 +9,15 @@ const HOSTS = ["1337x.to", "1337x.st", "x1337x.ws", "1337xx.to"];
 const MAX_DETAILS = 8;
 
 const STOP = new Set(["the", "a", "an", "of", "and", "or", "to"]);
+
+type X1337Category = "Movies" | "TV" | "Ebooks" | "Audiobooks";
+
+const POPULAR_PATH: Record<X1337Category, string> = {
+  Movies: "/popular-movies",
+  TV: "/popular-tv",
+  Ebooks: "/popular-ebooks",
+  Audiobooks: "/popular-audiobooks",
+};
 
 interface Row {
   name: string;
@@ -43,7 +53,7 @@ async function fetchText(url: string, opts: SearchOptions, retries: number): Pro
     retries,
   });
   if (!res.ok) throw new HttpError(res.status, `1337x returned ${res.status}`);
-  return res.text();
+  return readResponseText(res);
 }
 
 const MONTHS: Record<string, number> = {
@@ -80,14 +90,14 @@ async function detailInfo(
 
 async function search(
   query: string,
-  cat: "Movies" | "TV",
+  cat: X1337Category,
   source: SourceId,
   opts: SearchOptions = {},
 ): Promise<TorrentResult[]> {
   const q = query.trim();
   const path = q
     ? `/category-search/${encodeURIComponent(q).replace(/%20/g, "+")}/${cat}/1/`
-    : `/popular-${cat === "Movies" ? "movies" : "tv"}`;
+    : POPULAR_PATH[cat];
 
   let base = "";
   let html = "";
@@ -120,7 +130,9 @@ async function search(
   const settled = await Promise.all(
     rows.map(async (row): Promise<TorrentResult | null> => {
       const detail = await detailInfo(base, row.path, opts);
-      const infoHash = detail?.magnet?.match(/urn:btih:([a-zA-Z0-9]+)/i)?.[1]?.toLowerCase();
+      const infoHash = parseInfoHash(
+        detail?.magnet?.match(/urn:btih:([a-zA-Z0-9]+)/i)?.[1] ?? "",
+      );
       if (!detail || !infoHash) return null;
       return {
         infoHash,
@@ -151,4 +163,20 @@ export const x1337Tv: Source = {
   group: "TV",
   homepage: "https://1337x.to",
   search: (query, opts = {}) => search(query, "TV", "x1337-tv", opts),
+};
+
+export const x1337Books: Source = {
+  id: "x1337-books",
+  label: "1337x",
+  group: "Books",
+  homepage: "https://1337x.to",
+  search: (query, opts = {}) => search(query, "Ebooks", "x1337-books", opts),
+};
+
+export const x1337Audiobooks: Source = {
+  id: "x1337-audiobooks",
+  label: "1337x",
+  group: "Audiobooks",
+  homepage: "https://1337x.to",
+  search: (query, opts = {}) => search(query, "Audiobooks", "x1337-audiobooks", opts),
 };

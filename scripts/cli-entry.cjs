@@ -2,6 +2,12 @@
 'use strict';
 
 var major = parseInt(process.versions.node.split('.')[0], 10);
+function terminalSafeText(s) {
+  return String(s)
+    .replace(/(?:\x1b\][\s\S]*?(?:\x07|\x1b\\))|(?:\x9d[\s\S]*?(?:\x07|\x9c))|(?:\x1b[PX^_][\s\S]*?\x1b\\)|(?:[\x90\x98\x9e\x9f][\s\S]*?\x9c)|(?:\x1b\[[0-?]*[ -/]*[@-~])|(?:\x9b[0-?]*[ -/]*[@-~])|(?:\x1b[@-Z\\-_])/g, '')
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, '');
+}
+
 if (major < 22) {
   process.stderr.write(
     '\ntorlnk requires Node.js v22 or later.\n' +
@@ -13,6 +19,6 @@ if (major < 22) {
 }
 
 import('./index.js').catch(function (err) {
-  process.stderr.write(String((err && err.message) || err) + '\n');
+  process.stderr.write(terminalSafeText((err && err.message) || err) + '\n');
   process.exit(1);
 });

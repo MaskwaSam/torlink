@@ -2,6 +2,7 @@ import { render } from "ink";
 import { parseCliArgs, HELP_TEXT } from "./cli/args";
 import { VERSION } from "./version";
 import { App } from "./ui/App";
+import { terminalSafeText } from "./util/format";
 
 const cmd = parseCliArgs(process.argv.slice(2));
 
@@ -16,7 +17,7 @@ if (cmd.kind === "version") {
 }
 
 if (cmd.kind === "invalid") {
-  console.error(`error: unknown argument '${cmd.arg}'\n`);
+  console.error(terminalSafeText(`error: unknown argument '${cmd.arg}'\n`));
   console.error(HELP_TEXT);
   process.exit(1);
 }
@@ -67,7 +68,7 @@ app
   .then(() => forceExit(0))
   .catch((err) => {
     restoreTerminal();
-    console.error(err);
+    console.error(terminalSafeText(err instanceof Error ? (err.stack ?? err.message) : String(err)));
     process.exit(1);
   });
 
@@ -77,6 +78,6 @@ process.on("exit", restoreTerminal);
 
 process.on("uncaughtException", (err) => {
   restoreTerminal();
-  console.error(err);
+  console.error(terminalSafeText(err instanceof Error ? (err.stack ?? err.message) : String(err)));
   process.exit(1);
 });

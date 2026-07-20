@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { parseRetryAfter, backoffDelay, fetchResilient, HttpError } from "./net";
+import {
+  parseRetryAfter,
+  backoffDelay,
+  fetchResilient,
+  HttpError,
+  readResponseJson,
+  readResponseText,
+} from "./net";
 
 function fakeRes(status: number, headers: Record<string, string> = {}): Response {
   return {
@@ -67,5 +74,26 @@ describe("fetchResilient", () => {
     });
     expect(res.status).toBe(404);
     expect(calls).toBe(1);
+  });
+});
+
+describe("capped response readers", () => {
+  it("reads text within the cap", async () => {
+    await expect(readResponseText(new Response("hello"), 5)).resolves.toBe("hello");
+  });
+
+  it("rejects a declared oversized body before reading", async () => {
+    const res = new Response("hello", { headers: { "content-length": "5" } });
+    await expect(readResponseText(res, 4)).rejects.toBeInstanceOf(HttpError);
+  });
+
+  it("rejects a streamed body that grows past the cap", async () => {
+    await expect(readResponseText(new Response("hello"), 4)).rejects.toBeInstanceOf(HttpError);
+  });
+
+  it("parses JSON within the cap", async () => {
+    await expect(readResponseJson<{ ok: true }>(new Response('{"ok":true}'), 20)).resolves.toEqual({
+      ok: true,
+    });
   });
 });

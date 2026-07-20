@@ -10,7 +10,7 @@ import { reconcileQueue } from "../download/reconcile";
 import { parseInput } from "../sources/magnet";
 import { magnetFromTorrentFile } from "../sources/torrentFile";
 import { readClipboard, writeClipboard } from "../util/clipboard";
-import { cleanText, truncate } from "../util/format";
+import { cleanText, terminalSafeText, truncate } from "../util/format";
 import {
   StoreContext,
   type CaptureMode,
@@ -29,14 +29,15 @@ import { HelpOverlay } from "./components/HelpOverlay";
 import { Results } from "./components/Results";
 import { Downloads } from "./components/Downloads";
 import { Seeding } from "./components/Seeding";
+import { Sources } from "./components/Sources";
 import { Spinner } from "./components/Spinner";
 import { TabTitle } from "./components/TabTitle";
 import { Splash } from "./views/Splash";
 import { FolderPrompt } from "./components/FolderPrompt";
-import { TrackersPrompt } from "./components/TrackersPrompt";
 import { footerHints } from "./keymap";
 import { COLOR, ICON } from "./theme";
 import { useMouseWheel } from "./hooks/useMouseWheel";
+import { useVpnStatus } from "./hooks/useVpnStatus";
 import type { SourceId } from "../sources/types";
 
 export function App({
@@ -48,6 +49,7 @@ export function App({
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
   const { stdout } = useStdout();
+  const vpn = useVpnStatus();
 
   const [size, setSize] = useState({
     rows: stdout?.rows ?? 24,
@@ -84,9 +86,15 @@ export function App({
   const [seedFocus, setSeedFocus] = useState<SeedFocus | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [editingFolder, setEditingFolder] = useState(false);
-  const [editingTrackers, setEditingTrackers] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const booting = useRef(false);
+  const networkAllowed = config ? !config.requireSurfsharkVpn || vpn.ok : vpn.ok;
+
+  const requireVpn = useCallback((): boolean => {
+    if (!config?.requireSurfsharkVpn || vpn.ok) return true;
+    setNotice(vpn.reason);
+    return false;
+  }, [config?.requireSurfsharkVpn, vpn.ok, vpn.reason]);
 
   useEffect(() => {
     if (booting.current) return;
@@ -96,6 +104,9 @@ export function App({
       const cfg = await loadConfig();
       const q = new DownloadQueue();
       q.setTrackers(cfg.trackers);
+      q.setAutoResumeTorrents(cfg.autoResumeTorrents);
+      q.setAutoStopSeeding(cfg.autoStopSeeding);
+      q.setNetworkAllowed(!cfg.requireSurfsharkVpn || vpn.ok);
       q.restore(reconcileQueue(await loadQueue()));
       q.restoreHistory(await loadHistory());
       q.restoreSeeds(await loadSeeds());
@@ -105,12 +116,20 @@ export function App({
       }
       setConfigState(cfg);
       setQueue(q);
+      if (cfg.requireSurfsharkVpn && !vpn.ok) setNotice(vpn.reason);
       const launch = initialMagnet
         ? parseInput(initialMagnet)
         : initialTorrent
           ? await magnetFromTorrentFile(initialTorrent)
           : null;
       if (launch) {
+        if (cfg.requireSurfsharkVpn && !vpn.ok) {
+          setNotice(vpn.reason);
+          setView("browser");
+          setSection("downloads");
+          setRegion("content");
+          return;
+        }
         await fs.mkdir(cfg.downloadDir, { recursive: true }).catch(() => {});
         q.add(
           { id: launch.infoHash, name: launch.name, magnet: launch.magnet },
@@ -124,7 +143,14 @@ export function App({
     return () => {
       alive = false;
     };
-  }, [initialMagnet, initialTorrent]);
+  }, [initialMagnet, initialTorrent, vpn.ok, vpn.reason]);
+
+  useEffect(() => {
+    if (!queue || !config) return;
+    const allowed = !config.requireSurfsharkVpn || vpn.ok;
+    queue.setNetworkAllowed(allowed);
+    if (config.requireSurfsharkVpn && !vpn.ok) setNotice(vpn.reason);
+  }, [queue, config, vpn.ok, vpn.reason]);
 
   useEffect(() => {
     if (!queue) return;
@@ -155,35 +181,38 @@ export function App({
     (c: Config) => {
       setConfigState(c);
       queue?.setTrackers(c.trackers);
+      queue?.setAutoResumeTorrents(c.autoResumeTorrents);
+      queue?.setAutoStopSeeding(c.autoStopSeeding);
+      queue?.setNetworkAllowed(!c.requireSurfsharkVpn || vpn.ok);
       void saveConfig(c);
     },
-    [queue],
+    [queue, vpn.ok],
   );
+
+  const toggleAutoResume = useCallback(() => {
+    if (!config) return;
+    const autoResumeTorrents = !config.autoResumeTorrents;
+    setConfig({ ...config, autoResumeTorrents });
+    setNotice(`Torrent auto-resume ${autoResumeTorrents ? "on" : "off"}.`);
+  }, [config, setConfig]);
+
+  const toggleSurfsharkRequirement = useCallback(() => {
+    if (!config) return;
+    const requireSurfsharkVpn = !config.requireSurfsharkVpn;
+    setConfig({ ...config, requireSurfsharkVpn });
+    setNotice(`Surfshark requirement ${requireSurfsharkVpn ? "on" : "off"}.`);
+  }, [config, setConfig]);
+
+  const toggleAutoStopSeeding = useCallback(() => {
+    if (!config) return;
+    const autoStopSeeding = !config.autoStopSeeding;
+    setConfig({ ...config, autoStopSeeding });
+    setNotice(`Auto-stop seeding ${autoStopSeeding ? "on" : "off"}.`);
+  }, [config, setConfig]);
 
   const closeFolderPrompt = useCallback(() => {
     setEditingFolder(false);
   }, []);
-
-  const closeTrackersPrompt = useCallback(() => {
-    setEditingTrackers(false);
-  }, []);
-
-  const setTrackers = useCallback(
-    (list: string[]) => {
-      closeTrackersPrompt();
-      if (!config) return;
-      const same =
-        list.length === config.trackers.length &&
-        list.every((t, i) => t === config.trackers[i]);
-      if (same) {
-        setNotice("Trackers unchanged.");
-        return;
-      }
-      setConfig({ ...config, trackers: list });
-      setNotice(list.length === 0 ? "Cleared extra trackers." : `Saved ${list.length} tracker${list.length === 1 ? "" : "s"}.`);
-    },
-    [config, setConfig, closeTrackersPrompt],
-  );
 
   const setDownloadDir = useCallback(
     (raw: string) => {
@@ -216,13 +245,14 @@ export function App({
       sizeBytes?: number;
     }) => {
       if (!config || !queue) return;
+      if (!requireVpn()) return;
       void fs.mkdir(config.downloadDir, { recursive: true }).catch(() => {});
       queue.add(input, config.downloadDir);
       setNotice(`Added: ${truncate(cleanText(input.name), 40)}`);
       setSection("downloads");
       setRegion("content");
     },
-    [config, queue],
+    [config, queue, requireVpn],
   );
 
   const copyMagnet = useCallback((input: { name: string; magnet: string }) => {
@@ -251,12 +281,17 @@ export function App({
           return;
         }
       }
+      if (!requireVpn()) {
+        setView("browser");
+        setRegion("content");
+        return;
+      }
       setQuery(q);
       setView("browser");
       if (section === "downloads") setSection("all");
       setRegion("content");
     },
-    [section, startDownload],
+    [section, startDownload, requireVpn],
   );
 
   const pasteFromClipboard = useCallback(async () => {
@@ -293,6 +328,8 @@ export function App({
   const listRows = Math.max(4, bodyH);
   const contentWidth = Math.max(24, cols - RAIL_WIDTH - 3);
   const ruleWidth = Math.max(10, cols - 2);
+  const safeNotice = notice ? terminalSafeText(notice) : null;
+  const noticeColor = networkAllowed ? COLOR.good : COLOR.warn;
 
   const store: Store | null = useMemo(() => {
     if (!queue || !config) return null;
@@ -300,13 +337,15 @@ export function App({
       config,
       setConfig,
       queue,
+      vpn,
+      networkAllowed,
       view,
       setView,
       query,
       submitQuery,
       section,
       setSection,
-      region: showHelp || editingFolder || editingTrackers ? "help" : region,
+      region: showHelp || editingFolder ? "help" : region,
       setRegion,
       captureMode,
       setCaptureMode,
@@ -328,6 +367,8 @@ export function App({
   }, [
     queue,
     config,
+    vpn,
+    networkAllowed,
     view,
     query,
     submitQuery,
@@ -335,7 +376,6 @@ export function App({
     region,
     showHelp,
     editingFolder,
-    editingTrackers,
     captureMode,
     downloadFocus,
     seedFocus,
@@ -348,6 +388,9 @@ export function App({
     cols,
     rows,
     setConfig,
+    toggleAutoResume,
+    toggleAutoStopSeeding,
+    toggleSurfsharkRequirement,
     quitAll,
   ]);
 
@@ -357,7 +400,7 @@ export function App({
         quitAll();
         return;
       }
-      if (editingFolder || editingTrackers) return; // the prompt owns input (its own esc + enter)
+      if (editingFolder) return; // the prompt owns input (its own esc + enter)
       if (captureMode === "text") return;
       if (showHelp) {
         setShowHelp(false);
@@ -372,13 +415,20 @@ export function App({
         setEditingFolder(true);
         return;
       }
-      if (input === "t") {
-        setShowHelp(false);
-        setEditingTrackers(true);
-        return;
-      }
       if (input === "m") {
         void pasteFromClipboard();
+        return;
+      }
+      if (input === "a") {
+        toggleAutoResume();
+        return;
+      }
+      if (input === "v") {
+        toggleSurfsharkRequirement();
+        return;
+      }
+      if (input === "e") {
+        toggleAutoStopSeeding();
         return;
       }
       if (key.tab) {
@@ -433,7 +483,7 @@ export function App({
       <Box flexDirection="column" paddingX={1}>
         <Box justifyContent="space-between">
           <Logo />
-          {notice ? <Text color={COLOR.good}>{notice}</Text> : null}
+          {safeNotice ? <Text color={noticeColor}>{safeNotice}</Text> : null}
         </Box>
         {showTopRule ? <Rule width={ruleWidth} /> : null}
 
@@ -454,21 +504,10 @@ export function App({
           </Box>
         ) : null}
 
-        {editingTrackers ? (
-          <Box marginTop={1}>
-            <TrackersPrompt
-              width={Math.max(24, Math.min(cols - 4, 78))}
-              value={store.config.trackers}
-              onSubmit={setTrackers}
-              onCancel={closeTrackersPrompt}
-            />
-          </Box>
-        ) : null}
-
         <Box
           height={bodyH}
           marginTop={compact ? 0 : 1}
-          display={showHelp || editingFolder || editingTrackers ? "none" : "flex"}
+          display={showHelp || editingFolder ? "none" : "flex"}
           overflow="hidden"
         >
           <Sidebar />
@@ -477,6 +516,8 @@ export function App({
               <Downloads />
             ) : section === "seeding" ? (
               <Seeding />
+            ) : section === "sources" ? (
+              <Sources />
             ) : (
               <Results />
             )}
@@ -484,7 +525,7 @@ export function App({
         </Box>
 
         {showFooter ? (
-          <Box display={showHelp || editingFolder || editingTrackers ? "none" : "flex"}>
+          <Box display={showHelp || editingFolder ? "none" : "flex"}>
             <Footer hints={footerHints(region, section, downloadFocus, seedFocus)} />
           </Box>
         ) : null}

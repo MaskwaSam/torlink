@@ -1,4 +1,5 @@
-import { fetchResilient, HttpError, USER_AGENT } from "../util/net";
+import { fetchResilient, HttpError, readResponseText, USER_AGENT } from "../util/net";
+import { parseInfoHash } from "./magnet";
 import type { SearchOptions, SourceId, TorrentResult } from "./types";
 
 export function unescapeEntities(s: string): string {
@@ -18,7 +19,7 @@ function parseRssItems(xml: string, source: SourceId): TorrentResult[] {
     const magnetMatch = item.match(/href="(magnet:\?xt=urn:btih:[^"]+)"/i);
     if (!magnetMatch) continue;
     const magnet = unescapeEntities(magnetMatch[1]!);
-    const infoHash = magnet.match(/urn:btih:([a-zA-Z0-9]+)/)?.[1]?.toLowerCase() ?? "";
+    const infoHash = parseInfoHash(magnet.match(/urn:btih:([a-zA-Z0-9]+)/)?.[1] ?? "");
     if (!infoHash) continue;
 
     const name = unescapeEntities(item.match(/<title>(.*?)<\/title>/)?.[1] ?? "Unknown Title");
@@ -55,7 +56,7 @@ async function fetchFeedPage(
     ...(retries !== undefined ? { retries } : {}),
   });
   if (!res.ok) throw new HttpError(res.status, `${source} feed returned ${res.status}`);
-  return res.text();
+  return readResponseText(res);
 }
 
 export async function fetchWordpressRss(

@@ -19,7 +19,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       { keys: "tab", label: "Switch pane" },
       { keys: "esc", label: "Back" },
       { keys: "o", label: "Download folder" },
-      { keys: "t", label: "Extra trackers" },
+      { keys: "v", label: "Toggle Surfshark requirement" },
       { keys: "q", label: "Quit" },
     ],
   },
@@ -37,6 +37,8 @@ export const HELP_GROUPS: HelpGroup[] = [
     title: "Downloads",
     hints: [
       { keys: "p", label: "Pause/resume" },
+      { keys: "a", label: "Toggle auto-resume" },
+      { keys: "e", label: "Toggle auto-stop seeding" },
       { keys: "c", label: "Cancel or remove from list" },
       { keys: "f", label: "Retry failed" },
       { keys: "d", label: "Download again" },
@@ -47,7 +49,15 @@ export const HELP_GROUPS: HelpGroup[] = [
     title: "Seeding",
     hints: [
       { keys: "p", label: "Pause/resume" },
+      { keys: "e", label: "Toggle auto-stop seeding" },
       { keys: "c", label: "Remove from list" },
+    ],
+  },
+  {
+    title: "Sources",
+    hints: [
+      { keys: "space, ↵", label: "Toggle source" },
+      { keys: "r", label: "Enable all sources" },
     ],
   },
 ];
@@ -79,6 +89,15 @@ export function footerHints(
     const label =
       seedFocus === "seeding" ? "Pause" : seedFocus === "missing" ? "Retry" : "Resume";
     return [{ keys: "p", label }, { keys: "c", label: "Remove" }, SWITCH, ALWAYS];
+  }
+  if (section === "sources") {
+    return [
+      NAVIGATE,
+      { keys: "space", label: "Toggle" },
+      { keys: "r", label: "All on" },
+      SWITCH,
+      ALWAYS,
+    ];
   }
   if (section === "downloads") {
     if (downloadFocus === "paused") {

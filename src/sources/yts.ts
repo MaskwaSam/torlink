@@ -1,5 +1,5 @@
-import { fetchResilient, HttpError, USER_AGENT } from "../util/net";
-import { buildMagnet } from "./magnet";
+import { fetchResilient, HttpError, readResponseJson, USER_AGENT } from "../util/net";
+import { buildMagnet, parseInfoHash } from "./magnet";
 import type { SearchOptions, Source, TorrentResult } from "./types";
 
 const HOSTS = ["yts.mx", "yts.am", "yts.rs"];
@@ -31,7 +31,7 @@ async function fetchMovies(params: URLSearchParams, opts: SearchOptions): Promis
         signal: opts.signal,
         retries: 1,
       });
-      if (res.ok) return (await res.json()) as YtsResponse;
+      if (res.ok) return readResponseJson<YtsResponse>(res);
       lastError = new HttpError(res.status, `YTS returned ${res.status}`);
     } catch (e) {
       if (opts.signal?.aborted) throw e;
@@ -52,8 +52,8 @@ async function search(query: string, opts: SearchOptions = {}): Promise<TorrentR
   for (const movie of json.data?.movies ?? []) {
     const base = movie.title_long || movie.title || "Unknown";
     for (const t of movie.torrents ?? []) {
-      if (!t.hash) continue;
-      const infoHash = t.hash.toLowerCase();
+      const infoHash = parseInfoHash(t.hash ?? "");
+      if (!infoHash) continue;
       const tag = [t.quality, t.type].filter(Boolean).join(" ");
       const name = tag ? `${base} [${tag}]` : base;
       out.push({

@@ -1,23 +1,56 @@
 import { promises as fs } from "node:fs";
 import { configFile, defaultDownloadDir } from "./paths";
 import { serializeWrites, writeJsonAtomic } from "../util/atomic";
+import { SOURCE_IDS, type SourceId } from "../sources/types";
 
 export interface Config {
   downloadDir: string;
   trackers: string[];
+  autoResumeTorrents: boolean;
+  requireSurfsharkVpn: boolean;
+  autoStopSeeding: boolean;
+  disabledSources: SourceId[];
 }
 
 export const defaultConfig: Config = {
   downloadDir: defaultDownloadDir,
   trackers: [],
+  autoResumeTorrents: true,
+  requireSurfsharkVpn: true,
+  autoStopSeeding: false,
+  disabledSources: [],
 };
+
+const SOURCE_ID_SET = new Set<string>(SOURCE_IDS);
+
+function configCopy(config: Config = defaultConfig): Config {
+  return {
+    ...config,
+    trackers: [...config.trackers],
+    disabledSources: [...config.disabledSources],
+  };
+}
+
+function cleanDisabledSources(
+  value: unknown,
+  fallback: readonly SourceId[] = defaultConfig.disabledSources,
+): SourceId[] {
+  if (!Array.isArray(value)) return [...fallback];
+  const seen = new Set<SourceId>();
+  for (const raw of value) {
+    if (typeof raw !== "string" || !SOURCE_ID_SET.has(raw)) continue;
+    seen.add(raw as SourceId);
+  }
+  if (seen.size >= SOURCE_IDS.length) return [...fallback];
+  return SOURCE_IDS.filter((id) => seen.has(id));
+}
 
 export async function loadConfig(): Promise<Config> {
   let raw: string;
   try {
     raw = await fs.readFile(configFile, "utf8");
   } catch {
-    return { ...defaultConfig, trackers: [] };
+    return configCopy();
   }
   try {
     const parsed = JSON.parse(raw) as Partial<Config>;
@@ -29,10 +62,23 @@ export async function loadConfig(): Promise<Config> {
       trackers: Array.isArray(parsed.trackers)
         ? parsed.trackers.filter((t): t is string => typeof t === "string" && t.length > 0)
         : [],
+      autoResumeTorrents:
+        typeof parsed.autoResumeTorrents === "boolean"
+          ? parsed.autoResumeTorrents
+          : defaultConfig.autoResumeTorrents,
+      requireSurfsharkVpn:
+        typeof parsed.requireSurfsharkVpn === "boolean"
+          ? parsed.requireSurfsharkVpn
+          : defaultConfig.requireSurfsharkVpn,
+      autoStopSeeding:
+        typeof parsed.autoStopSeeding === "boolean"
+          ? parsed.autoStopSeeding
+          : defaultConfig.autoStopSeeding,
+      disabledSources: cleanDisabledSources(parsed.disabledSources),
     };
     return cfg;
   } catch {
-    return { ...defaultConfig, trackers: [] };
+    return configCopy();
   }
 }
 

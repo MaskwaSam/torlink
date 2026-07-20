@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Text } from "ink";
 import { COLOR } from "../theme";
+import { terminalSafeText } from "../../util/format";
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -14,7 +15,7 @@ export function Spinner({ label }: { label?: string }) {
   return (
     <Text>
       <Text color={COLOR.accent}>{FRAMES[frame]}</Text>
-      {label ? <Text dimColor>{` ${label}`}</Text> : null}
+      {label ? <Text dimColor>{` ${terminalSafeText(label)}`}</Text> : null}
     </Text>
   );
 }

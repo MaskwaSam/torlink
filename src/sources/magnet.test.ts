@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { parseMagnet, parseInput, isInfoHash, normalizeInfoHash, buildMagnet } from "./magnet";
+import {
+  parseMagnet,
+  parseInput,
+  isInfoHash,
+  normalizeInfoHash,
+  parseInfoHash,
+  buildMagnet,
+} from "./magnet";
 
 describe("parseMagnet", () => {
   it("keeps a full 40-char hex info hash", () => {
@@ -41,11 +48,11 @@ describe("normalizeInfoHash", () => {
 });
 
 describe("buildMagnet", () => {
-  it("builds a magnet with encoded name and trackers", () => {
+  it("builds a magnet with an encoded name and no generated trackers", () => {
     const out = buildMagnet("abc123", "My Movie 2024");
     expect(out).toContain("xt=urn:btih:abc123");
     expect(out).toContain("dn=My%20Movie%202024");
-    expect(out).toContain("&tr=");
+    expect(out).not.toContain("&tr=");
   });
 });
 
@@ -64,6 +71,24 @@ describe("isInfoHash", () => {
   });
 });
 
+describe("parseInfoHash", () => {
+  it("returns canonical lowercase hex", () => {
+    expect(parseInfoHash("ABCDEF0123456789ABCDEF0123456789ABCDEF01")).toBe(
+      "abcdef0123456789abcdef0123456789abcdef01",
+    );
+  });
+
+  it("decodes base32 to canonical hex", () => {
+    expect(parseInfoHash("MFRGGZDFMZTWQ2LKNNWG23TPOBYXE43U")).toMatch(/^[a-f0-9]{40}$/);
+  });
+
+  it("rejects path-like and malformed input", () => {
+    expect(parseInfoHash("../../escape")).toBeNull();
+    expect(parseInfoHash("a".repeat(39))).toBeNull();
+    expect(parseInfoHash("g".repeat(40))).toBeNull();
+  });
+});
+
 describe("parseInput", () => {
   it("parses a full magnet URI just like parseMagnet", () => {
     const hash = "abcdef0123456789abcdef0123456789abcdef01";
@@ -71,13 +96,13 @@ describe("parseInput", () => {
     expect(m?.infoHash).toBe(hash);
     expect(m?.name).toBe("Cool Movie");
   });
-  it("wraps a bare 40-char hex hash into a magnet with trackers", () => {
+  it("wraps a bare 40-char hex hash into a trackerless magnet", () => {
     const hash = "abcdef0123456789abcdef0123456789abcdef01";
     const m = parseInput(hash);
     expect(m?.infoHash).toBe(hash);
     expect(m?.name).toBe(hash);
     expect(m?.magnet).toContain(`xt=urn:btih:${hash}`);
-    expect(m?.magnet).toContain("&tr=");
+    expect(m?.magnet).not.toContain("&tr=");
   });
   it("decodes a bare 32-char base32 hash to 40-char hex", () => {
     const m = parseInput("MFRGGZDFMZTWQ2LKNNWG23TPOBYXE43U");

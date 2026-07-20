@@ -1,5 +1,5 @@
-import { fetchResilient, HttpError, USER_AGENT } from "../util/net";
-import { buildMagnet } from "./magnet";
+import { fetchResilient, HttpError, readResponseJson, USER_AGENT } from "../util/net";
+import { buildMagnet, parseInfoHash } from "./magnet";
 import type { SearchOptions, Source, TorrentResult } from "./types";
 
 const API = "https://eztvx.to/api/get-torrents";
@@ -28,11 +28,11 @@ async function search(query: string, opts: SearchOptions = {}): Promise<TorrentR
   });
   if (!res.ok) throw new HttpError(res.status, `EZTV returned ${res.status}`);
 
-  const json = (await res.json()) as EztvResponse;
+  const json = await readResponseJson<EztvResponse>(res);
   const out: TorrentResult[] = [];
   for (const t of json.torrents ?? []) {
-    const hash = (t.hash ?? "").toLowerCase();
-    const name = t.title || t.filename || hash;
+    const hash = parseInfoHash(t.hash ?? "");
+    const name = t.title || t.filename || hash || "";
     const magnet = t.magnet_url || (hash ? buildMagnet(hash, name) : "");
     if (!magnet || !hash) continue;
     out.push({

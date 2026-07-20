@@ -2,8 +2,8 @@ import { eztv } from "./eztv";
 import { fitgirl } from "./fitgirl";
 import { nyaa } from "./nyaa";
 import { subsplease } from "./subsplease";
-import { tpbMovies, tpbTv } from "./piratebay";
-import { x1337Movies, x1337Tv } from "./x1337";
+import { tpbAudiobooks, tpbBooks, tpbMovies, tpbTv } from "./piratebay";
+import { x1337Audiobooks, x1337Books, x1337Movies, x1337Tv } from "./x1337";
 import { yts } from "./yts";
 import type { Source, SourceGroup, SourceId } from "./types";
 
@@ -17,6 +17,10 @@ export const SOURCES: readonly Source[] = [
   x1337Tv,
   nyaa,
   subsplease,
+  tpbBooks,
+  x1337Books,
+  tpbAudiobooks,
+  x1337Audiobooks,
 ];
 
 export const DEFAULT_SOURCE: Source = SOURCES[0]!;
@@ -25,7 +29,24 @@ export function getSource(id: SourceId): Source {
   return SOURCES.find((s) => s.id === id) ?? DEFAULT_SOURCE;
 }
 
-const GROUP_ORDER: readonly SourceGroup[] = ["Games", "Movies", "TV", "Anime"];
+export function sourceDisplayName(source: Source): string {
+  const duplicate = SOURCES.some((s) => s.id !== source.id && s.label === source.label);
+  return duplicate ? `${source.label} ${source.group}` : source.label;
+}
+
+export function activeSources(disabledSources: readonly SourceId[] = []): Source[] {
+  const disabled = new Set(disabledSources);
+  return SOURCES.filter((s) => !disabled.has(s.id));
+}
+
+const GROUP_ORDER: readonly SourceGroup[] = [
+  "Games",
+  "Movies",
+  "TV",
+  "Anime",
+  "Books",
+  "Audiobooks",
+];
 
 export function sourcesByGroup(): { group: SourceGroup; sources: Source[] }[] {
   return GROUP_ORDER.map((group) => ({

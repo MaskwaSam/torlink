@@ -86,8 +86,17 @@ export function formatEtaShort(sec?: number): string {
   return `${s}s`;
 }
 
+const TERMINAL_ESCAPE_RE =
+  /(?:\x1b\][\s\S]*?(?:\x07|\x1b\\))|(?:\x9d[\s\S]*?(?:\x07|\x9c))|(?:\x1b[PX^_][\s\S]*?\x1b\\)|(?:[\x90\x98\x9e\x9f][\s\S]*?\x9c)|(?:\x1b\[[0-?]*[ -/]*[@-~])|(?:\x9b[0-?]*[ -/]*[@-~])|(?:\x1b[@-Z\\-_])/g;
+const CONTROL_RE = /[\x00-\x1f\x7f-\x9f]/g;
+
+export function terminalSafeText(s: string): string {
+  return s.replace(TERMINAL_ESCAPE_RE, "").replace(CONTROL_RE, "");
+}
+
 function isJunkCodePoint(cp: number): boolean {
   if (cp < 0x20 || cp === 0x7f) return true;
+  if (cp >= 0x80 && cp <= 0x9f) return true;
   if (cp === 0xfffd) return true;
   if (cp >= 0x200b && cp <= 0x200f) return true;
   if (cp >= 0x2028 && cp <= 0x202e) return true;
@@ -101,7 +110,7 @@ function isJunkCodePoint(cp: number): boolean {
 
 export function cleanText(s: string): string {
   let out = "";
-  for (const ch of s.normalize("NFC")) {
+  for (const ch of terminalSafeText(s).normalize("NFC")) {
     if (!isJunkCodePoint(ch.codePointAt(0)!)) out += ch;
   }
   return out.replace(/\s+/g, " ").trim() || "Untitled";

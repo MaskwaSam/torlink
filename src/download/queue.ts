@@ -12,7 +12,8 @@ import {
   type SeedRecord,
 } from "./persist";
 import { saveHistory, saveHistorySync, type HistoryItem } from "./history";
-import type { QueueItem, SeedItem } from "./types";
+import type { PauseReason, QueueItem, SeedItem } from "./types";
+import { parseInfoHash } from "../sources/magnet";
 import type { SourceId } from "../sources/types";
 
 /**
@@ -54,12 +55,110 @@ export class DownloadQueue extends EventEmitter {
   private strayHits = new Map<string, number>();
   private seedStartedAt = new Map<string, number>();
   private trackers: string[] = [];
+  private networkAllowed = true;
+  private autoResumeTorrents = true;
+  private autoStopSeeding = false;
+  private networkPausedDownloads = new Set<string>();
+  private networkPausedSeeds = new Set<string>();
 
-  // Extra announce URLs appended to every torrent added from now on.
-  // Existing running torrents aren't retro-updated — the change takes effect
-  // for the next add / resume / re-seed.
+  // Retained user config for compatibility. TorrentEngine currently disables
+  // tracker discovery, so these are not contacted by TorLink.
   setTrackers(trackers: string[]): void {
     this.trackers = trackers;
+  }
+
+  setNetworkAllowed(allowed: boolean): void {
+    if (this.networkAllowed === allowed) return;
+    this.networkAllowed = allowed;
+    if (!allowed) this.pauseNetworkActivity();
+    else if (this.autoResumeTorrents) this.resumeNetworkPaused();
+  }
+
+  setAutoResumeTorrents(enabled: boolean): void {
+    if (this.autoResumeTorrents === enabled) return;
+    this.autoResumeTorrents = enabled;
+    if (enabled && this.networkAllowed) this.resumeNetworkPaused();
+  }
+
+  setAutoStopSeeding(enabled: boolean): void {
+    if (this.autoStopSeeding === enabled) return;
+    this.autoStopSeeding = enabled;
+    if (enabled) this.stopActiveSeeds();
+  }
+
+  private stopActiveSeeds(): void {
+    let changed = false;
+    for (const sd of this.seeds.values()) {
+      if (sd.status !== "seeding") continue;
+      this.engine.remove(sd.id);
+      this.strayHits.delete(sd.id);
+      this.seedStartedAt.delete(sd.id);
+      this.networkPausedSeeds.delete(sd.id);
+      sd.status = "paused";
+      sd.pauseReason = undefined;
+      sd.uploadSpeed = 0;
+      sd.peers = 0;
+      changed = true;
+    }
+    if (!changed) return;
+    this.changed();
+    void this.persistSeeds();
+    this.maybeStopPoll();
+  }
+
+  private pauseNetworkActivity(): void {
+    let downloadsChanged = false;
+    let seedsChanged = false;
+
+    for (const it of this.items.values()) {
+      if (it.status !== "downloading") continue;
+      this.engine.remove(it.id);
+      it.status = "paused";
+      it.pauseReason = "network";
+      it.speed = 0;
+      it.peers = 0;
+      it.eta = undefined;
+      this.networkPausedDownloads.add(it.id);
+      downloadsChanged = true;
+    }
+
+    for (const sd of this.seeds.values()) {
+      if (sd.status !== "seeding") continue;
+      this.engine.remove(sd.id);
+      this.strayHits.delete(sd.id);
+      this.seedStartedAt.delete(sd.id);
+      sd.status = "paused";
+      sd.pauseReason = "network";
+      sd.uploadSpeed = 0;
+      sd.peers = 0;
+      this.networkPausedSeeds.add(sd.id);
+      seedsChanged = true;
+    }
+
+    if (!downloadsChanged && !seedsChanged) return;
+    this.changed();
+    if (downloadsChanged) void this.persist();
+    if (seedsChanged) void this.persistSeeds();
+    this.maybeStopPoll();
+  }
+
+  private resumeNetworkPaused(): void {
+    for (const id of [...this.networkPausedDownloads]) {
+      const it = this.items.get(id);
+      if (it?.status === "paused" && it.pauseReason === "network") this.resume(id);
+      else this.networkPausedDownloads.delete(id);
+    }
+
+    for (const id of [...this.networkPausedSeeds]) {
+      const sd = this.seeds.get(id);
+      if (sd?.status === "paused" && sd.pauseReason === "network") {
+        const h = this.history.find((x) => x.id === id);
+        if (h) this.startSeeding(h);
+        else this.networkPausedSeeds.delete(id);
+      } else {
+        this.networkPausedSeeds.delete(id);
+      }
+    }
   }
 
   getItems(): QueueItem[] {
@@ -77,34 +176,48 @@ export class DownloadQueue extends EventEmitter {
   }
 
   add(input: AddInput, dir: string): void {
-    if (this.seeds.has(input.id)) {
-      this.engine.remove(input.id);
-      this.seeds.delete(input.id);
-      this.strayHits.delete(input.id);
-      this.seedStartedAt.delete(input.id);
+    const id = parseInfoHash(input.id);
+    if (!id) return;
+    const safeInput = { ...input, id };
+    if (this.seeds.has(id)) {
+      this.engine.remove(id);
+      this.seeds.delete(id);
+      this.strayHits.delete(id);
+      this.seedStartedAt.delete(id);
       void this.persistSeeds();
     }
-    const existing = this.items.get(input.id);
+    const existing = this.items.get(id);
     if (existing && existing.status !== "failed") return;
     const item: QueueItem = existing
-      ? { ...existing, status: "downloading", error: undefined, speed: 0 }
+      ? {
+          ...existing,
+          status: this.networkAllowed ? "downloading" : "paused",
+          error: undefined,
+          speed: 0,
+          pauseReason: this.networkAllowed ? undefined : "network",
+        }
       : {
-          id: input.id,
-          name: input.name,
-          source: input.source,
-          magnet: input.magnet,
+          id: safeInput.id,
+          name: safeInput.name,
+          source: safeInput.source,
+          magnet: safeInput.magnet,
           dir,
-          status: "downloading",
+          status: this.networkAllowed ? "downloading" : "paused",
+          pauseReason: this.networkAllowed ? undefined : "network",
           progress: 0,
-          totalBytes: input.sizeBytes ?? 0,
+          totalBytes: safeInput.sizeBytes ?? 0,
           downloadedBytes: 0,
           speed: 0,
           peers: 0,
           addedAt: Date.now(),
         };
     this.items.set(item.id, item);
-    this.startEngine(item);
-    this.ensurePoll();
+    if (this.networkAllowed) {
+      this.startEngine(item);
+      this.ensurePoll();
+    } else {
+      this.networkPausedDownloads.add(item.id);
+    }
     this.changed();
     void this.persist();
   }
@@ -135,7 +248,8 @@ export class DownloadQueue extends EventEmitter {
       onDone: () => {
         const it = this.items.get(id);
         if (it) {
-          // Download finished: record it and keep the torrent seeding.
+          // Download finished: record it, then either seed or stop according to
+          // the user's auto-stop seeding preference.
           if (it.totalBytes) it.downloadedBytes = it.totalBytes;
           this.complete(it);
           return;
@@ -176,9 +290,17 @@ export class DownloadQueue extends EventEmitter {
   private complete(it: QueueItem): void {
     this.recordHistory(it);
     this.items.delete(it.id);
-    // Opt-out seeding: a finished download is already a complete, verified
-    // torrent, so keep it alive and seeding instead of tearing it down.
-    this.beginSeed(it);
+    if (this.autoStopSeeding) {
+      this.engine.remove(it.id);
+      this.strayHits.delete(it.id);
+      this.seedStartedAt.delete(it.id);
+      this.networkPausedDownloads.delete(it.id);
+      this.networkPausedSeeds.delete(it.id);
+    } else {
+      // Opt-out seeding: a finished download is already a complete, verified
+      // torrent, so keep it alive and seeding instead of tearing it down.
+      this.beginSeed(it);
+    }
     this.emit("completed", it.name);
     this.changed();
     void this.persist();
@@ -280,9 +402,11 @@ export class DownloadQueue extends EventEmitter {
     const it = this.items.get(id);
     if (!it || it.status !== "downloading") return;
     it.status = "paused";
+    it.pauseReason = undefined;
     it.speed = 0;
     it.peers = 0;
     it.eta = undefined;
+    this.networkPausedDownloads.delete(id);
     this.engine.remove(id);
     this.changed();
     void this.persist();
@@ -292,7 +416,10 @@ export class DownloadQueue extends EventEmitter {
   resume(id: string): void {
     const it = this.items.get(id);
     if (!it || it.status !== "paused") return;
+    if (!this.networkAllowed) return;
     it.status = "downloading";
+    it.pauseReason = undefined;
+    this.networkPausedDownloads.delete(id);
     this.startEngine(it);
     this.ensurePoll();
     this.changed();
@@ -310,6 +437,7 @@ export class DownloadQueue extends EventEmitter {
     if (!this.items.has(id)) return;
     this.engine.remove(id);
     this.items.delete(id);
+    this.networkPausedDownloads.delete(id);
     deleteTorrentMeta(id);
     this.changed();
     void this.persist();
@@ -319,7 +447,10 @@ export class DownloadQueue extends EventEmitter {
   retry(id: string): void {
     const it = this.items.get(id);
     if (!it || it.status !== "failed") return;
+    if (!this.networkAllowed) return;
     it.status = "downloading";
+    it.pauseReason = undefined;
+    this.networkPausedDownloads.delete(id);
     it.error = undefined;
     this.startEngine(it);
     this.ensurePoll();
@@ -348,39 +479,51 @@ export class DownloadQueue extends EventEmitter {
   }
 
   startSeeding(h: HistoryItem): void {
-    if (this.seeds.get(h.id)?.status === "seeding") return;
-    if (this.items.has(h.id)) return; // don't seed a file that's downloading
+    const id = parseInfoHash(h.id);
+    if (!id) return;
+    const safeHistory = { ...h, id };
+    if (this.seeds.get(id)?.status === "seeding") return;
+    if (this.items.has(id)) return; // don't seed a file that's downloading
+
+    if (!this.networkAllowed) {
+      this.restorePaused(safeHistory, "network");
+      this.networkPausedSeeds.add(id);
+      void this.persistSeeds();
+      return;
+    }
 
     const base: SeedItem = {
-      id: h.id,
-      name: h.name,
-      source: h.source,
-      magnet: h.magnet,
-      dir: h.dir,
-      sizeBytes: h.sizeBytes,
+      id: safeHistory.id,
+      name: safeHistory.name,
+      source: safeHistory.source,
+      magnet: safeHistory.magnet,
+      dir: safeHistory.dir,
+      sizeBytes: safeHistory.sizeBytes,
       status: "seeding",
       uploadSpeed: 0,
       uploaded: 0,
       peers: 0,
+      pauseReason: undefined,
     };
 
     // Only hard guard we can make synchronously and portably: no magnet, no seed.
     // We do NOT guess the on-disk path (webtorrent sanitizes names per-OS); we
     // let it verify the real files and the poll safety-net flags a missing one.
-    if (!h.magnet) {
-      this.seeds.set(h.id, { ...base, status: "missing" });
+    if (!safeHistory.magnet) {
+      this.seeds.set(id, { ...base, status: "missing" });
       this.changed();
       void this.persistSeeds();
       return;
     }
 
-    this.seeds.set(h.id, base);
-    this.strayHits.set(h.id, 0);
-    this.seedStartedAt.set(h.id, Date.now());
+    this.seeds.set(id, base);
+    this.networkPausedSeeds.delete(id);
+    this.strayHits.set(id, 0);
+    this.seedStartedAt.set(id, Date.now());
     // Seed from the stored .torrent metadata when we have it (verifies the local
     // file immediately, no swarm needed); fall back to the magnet otherwise.
-    const source = torrentMetaExists(h.id) ? torrentMetaPath(h.id) : h.magnet;
-    this.engine.add(h.id, source, h.dir, this.engineHandlers(h.id), this.trackers);
+    const source = torrentMetaExists(id) ? torrentMetaPath(id) : safeHistory.magnet;
+    this.engine.add(id, source, safeHistory.dir, this.engineHandlers(id), this.trackers);
     this.ensurePoll();
     this.changed();
     void this.persistSeeds();
@@ -392,8 +535,10 @@ export class DownloadQueue extends EventEmitter {
     this.engine.remove(id);
     this.strayHits.delete(id);
     this.seedStartedAt.delete(id);
+    this.networkPausedSeeds.delete(id);
     if (s.status === "seeding") {
       s.status = "paused";
+      s.pauseReason = undefined;
       s.uploadSpeed = 0;
       s.peers = 0;
     }
@@ -413,14 +558,24 @@ export class DownloadQueue extends EventEmitter {
       if (!h) continue;
       // Respect the persisted choice: resume seeders, but leave a paused seed
       // paused (and visibly so) instead of auto-starting it.
-      if (r.status === "seeding") this.startSeeding(h);
-      else this.restorePaused(h);
+      if (
+        (r.status === "seeding" || r.pauseReason === "network") &&
+        this.networkAllowed &&
+        this.autoResumeTorrents &&
+        !this.autoStopSeeding
+      ) {
+        this.startSeeding(h);
+      } else {
+        const pauseReason =
+          r.status === "seeding" && !this.networkAllowed ? "network" : r.pauseReason;
+        this.restorePaused(h, pauseReason);
+      }
     }
   }
 
   // Rebuild a paused seed from history without touching the engine, so it shows
   // as paused and stays off until the user presses p to resume it.
-  private restorePaused(h: HistoryItem): void {
+  private restorePaused(h: HistoryItem, pauseReason?: PauseReason): void {
     if (this.seeds.has(h.id)) return;
     this.seeds.set(h.id, {
       id: h.id,
@@ -433,7 +588,9 @@ export class DownloadQueue extends EventEmitter {
       uploadSpeed: 0,
       uploaded: 0,
       peers: 0,
+      pauseReason,
     });
+    if (pauseReason === "network") this.networkPausedSeeds.add(h.id);
     this.changed();
   }
 
@@ -442,10 +599,32 @@ export class DownloadQueue extends EventEmitter {
     for (const s of this.seeds.values()) {
       // "missing" is a runtime detection (file gone); persist it as paused so we
       // remember the user had it without auto-seeding a file that isn't there.
-      if (s.status === "seeding") out.push({ id: s.id, status: "seeding" });
-      else out.push({ id: s.id, status: "paused" });
+      if (s.status === "seeding" && this.autoResumeTorrents && !this.autoStopSeeding) {
+        out.push({ id: s.id, status: "seeding" });
+      } else {
+        out.push({
+          id: s.id,
+          status: "paused",
+          pauseReason: s.pauseReason === "network" ? "network" : undefined,
+        });
+      }
     }
     return out;
+  }
+
+  private queueRecords(): QueueItem[] {
+    return this.getItems().map((it) =>
+      it.status === "downloading" && !this.autoResumeTorrents
+        ? {
+            ...it,
+            status: "paused",
+            speed: 0,
+            peers: 0,
+            eta: undefined,
+            pauseReason: undefined,
+          }
+        : it,
+    );
   }
 
   private persistSeeds(): Promise<void> {
@@ -454,8 +633,31 @@ export class DownloadQueue extends EventEmitter {
 
   restore(items: QueueItem[]): void {
     for (const raw of items) {
-      this.items.set(raw.id, raw);
-      if (raw.status === "downloading") this.startEngine(raw);
+      const shouldAutoResumeNetworkPause =
+        raw.status === "paused" &&
+        raw.pauseReason === "network" &&
+        this.networkAllowed &&
+        this.autoResumeTorrents;
+      const shouldStartDownloading =
+        raw.status === "downloading" && this.networkAllowed && this.autoResumeTorrents;
+      const shouldNetworkPause =
+        raw.status === "downloading" && (!this.networkAllowed || !this.autoResumeTorrents);
+      const item =
+        shouldAutoResumeNetworkPause || shouldStartDownloading
+          ? { ...raw, status: "downloading" as const, pauseReason: undefined }
+          : shouldNetworkPause
+            ? {
+                ...raw,
+                status: "paused" as const,
+                speed: 0,
+                peers: 0,
+                eta: undefined,
+                pauseReason: !this.networkAllowed ? ("network" as const) : undefined,
+              }
+            : raw;
+      this.items.set(item.id, item);
+      if (item.status === "downloading") this.startEngine(item);
+      else if (item.pauseReason === "network") this.networkPausedDownloads.add(item.id);
     }
     if (this.activeCount > 0) this.ensurePoll();
     this.changed();
@@ -521,7 +723,7 @@ export class DownloadQueue extends EventEmitter {
   }
 
   private async persist(): Promise<void> {
-    await saveQueue(this.getItems()).catch(() => {});
+    await saveQueue(this.queueRecords()).catch(() => {});
   }
 
   // Synchronously flush every state file from current memory. Used on quit so
@@ -529,7 +731,7 @@ export class DownloadQueue extends EventEmitter {
   // history / seeds can never be lost mid-write. Touches no engine state, so it
   // can never block shutdown.
   persistSync(): void {
-    saveQueueSync(this.getItems());
+    saveQueueSync(this.queueRecords());
     saveHistorySync(this.history);
     saveSeedsSync(this.seedRecords());
   }

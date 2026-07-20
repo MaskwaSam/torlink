@@ -11,6 +11,7 @@ import {
   formatBytesPerSec,
   formatEtaShort,
   formatRelative,
+  terminalSafeText,
   truncate,
 } from "../../util/format";
 import type { QueueItem } from "../../download/types";
@@ -40,11 +41,21 @@ function rightStats(it: QueueItem): string {
     return `${it.progress}%  ${speed}  ${ICON.peer}${it.peers}${eta}`;
   }
   if (it.status === "paused") return `paused  ${it.progress}%`;
-  return truncate(it.error || "failed", 28);
+  return truncate(terminalSafeText(it.error || "failed"), 28);
 }
 
 export function Downloads() {
-  const { queue, region, contentWidth, listRows, startDownload, setDownloadFocus } = useStore();
+  const {
+    queue,
+    vpn,
+    networkAllowed,
+    region,
+    contentWidth,
+    listRows,
+    startDownload,
+    setNotice,
+    setDownloadFocus,
+  } = useStore();
   const active = useQueueItems(queue);
   const recent = useQueueHistory(queue);
   const focused = region === "content";
@@ -59,13 +70,19 @@ export function Downloads() {
     (input, key) => {
       if (key.upArrow || input === "k") setCursor(wrapStep(clamped, -1, total));
       else if (key.downArrow || input === "j") setCursor(wrapStep(clamped, 1, total));
-      else if (input === "f") queue.retryFailed();
+      else if (input === "f") {
+        if (!networkAllowed) setNotice(vpn.reason);
+        else queue.retryFailed();
+      }
       else if (input === "x") queue.clearHistory();
       else if (inActive) {
         const it = active[clamped];
         if (!it) return;
         if (input === "c") queue.cancel(it.id);
-        else if (input === "p") queue.togglePause(it.id);
+        else if (input === "p") {
+          if (it.status === "paused" && !networkAllowed) setNotice(vpn.reason);
+          else queue.togglePause(it.id);
+        }
       } else {
         const h = recent[recentCursor];
         if (!h) return;

@@ -4,6 +4,8 @@ export type DownloadStatus = "downloading" | "paused" | "completed" | "failed";
 
 export type SeedStatus = "seeding" | "paused" | "missing";
 
+export type PauseReason = "network";
+
 export interface SeedItem {
   id: string;
   name: string;
@@ -15,6 +17,7 @@ export interface SeedItem {
   uploadSpeed: number;
   uploaded: number;
   peers: number;
+  pauseReason?: PauseReason;
 }
 
 export interface QueueItem {
@@ -33,4 +36,5 @@ export interface QueueItem {
   files?: number;
   error?: string;
   addedAt: number;
+  pauseReason?: PauseReason;
 }

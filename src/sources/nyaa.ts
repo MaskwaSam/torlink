@@ -1,5 +1,5 @@
-import { fetchResilient, HttpError, USER_AGENT } from "../util/net";
-import { buildMagnet } from "./magnet";
+import { fetchResilient, HttpError, readResponseText, USER_AGENT } from "../util/net";
+import { buildMagnet, parseInfoHash } from "./magnet";
 import { unescapeEntities } from "./rss";
 import { parseSize } from "../util/format";
 import type { SearchOptions, Source, TorrentResult } from "./types";
@@ -18,10 +18,10 @@ async function search(query: string, opts: SearchOptions = {}): Promise<TorrentR
   });
   if (!res.ok) throw new HttpError(res.status, `Nyaa returned ${res.status}`);
 
-  const xml = await res.text();
+  const xml = await readResponseText(res);
   const out: TorrentResult[] = [];
   for (const item of xml.split("<item>").slice(1)) {
-    const infoHash = tag(item, "nyaa:infoHash").toLowerCase();
+    const infoHash = parseInfoHash(tag(item, "nyaa:infoHash"));
     const name = unescapeEntities(tag(item, "title"));
     if (!infoHash || !name) continue;
     const seeders = Number(tag(item, "nyaa:seeders"));

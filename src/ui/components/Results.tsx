@@ -6,11 +6,18 @@ import { SearchBar } from "./SearchBar";
 import { Panel } from "./Panel";
 import { Rule } from "./Rule";
 import { useConcurrentSearch } from "../hooks/useConcurrentSearch";
-import { getSource, SOURCES } from "../../sources/registry";
+import { activeSources, getSource } from "../../sources/registry";
 import { wrapStep, windowStart, resultsPanelOuter } from "../move";
 import { sortResults, nextSort, sortLabel, sortArrow, type Sort, type SortField } from "../sort";
 import { COLOR, GUTTER, ICON, sourceStyle } from "../theme";
-import { cleanText, formatBytes, formatCount, formatRelative, truncate } from "../../util/format";
+import {
+  cleanText,
+  formatBytes,
+  formatCount,
+  formatRelative,
+  terminalSafeText,
+  truncate,
+} from "../../util/format";
 import type { Source, TorrentResult } from "../../sources/types";
 
 type Mode = "list" | "search" | "detail";
@@ -77,7 +84,7 @@ function Detail({ r, width }: { r: TorrentResult; width: number }) {
           label="Hash"
           value={
             <Text color={COLOR.alt} dimColor wrap="truncate-end">
-              {r.infoHash}
+              {terminalSafeText(r.infoHash)}
             </Text>
           }
         />
@@ -85,7 +92,7 @@ function Detail({ r, width }: { r: TorrentResult; width: number }) {
           label="Magnet"
           value={
             <Text color={COLOR.alt} dimColor wrap="truncate-end">
-              {r.magnet}
+              {terminalSafeText(r.magnet)}
             </Text>
           }
         />
@@ -118,11 +125,18 @@ export function Results() {
     setCaptureMode,
     startDownload,
     copyMagnet,
+    vpn,
+    networkAllowed,
     contentWidth,
     listRows,
+    config,
   } = useStore();
 
-  const search = useConcurrentSearch(query);
+  const searchSources = useMemo(
+    () => activeSources(config.disabledSources),
+    [config.disabledSources],
+  );
+  const search = useConcurrentSearch(query, networkAllowed, searchSources);
 
   const [sort, setSort] = useState<Sort>("none");
   const results = useMemo(() => {
@@ -230,11 +244,13 @@ export function Results() {
 
   const browsing = query.trim() === "";
   const erroredCount = useMemo(
-    () => Object.values(search.perSource).filter((s) => s.error).length,
-    [search.perSource],
+    () => searchSources.filter((s) => search.perSource[s.id]?.error).length,
+    [search.perSource, searchSources],
   );
   const activeCat = CATEGORIES.find((c) => c.key === section);
-  const tabSources = activeCat?.group ? SOURCES.filter((s) => s.group === activeCat.group) : SOURCES;
+  const tabSources = activeCat?.group
+    ? searchSources.filter((s) => s.group === activeCat.group)
+    : searchSources;
   const tabErrored =
     tabSources.length > 0 && tabSources.every((s) => search.perSource[s.id]?.error);
   const showStats = useMemo(
@@ -253,6 +269,15 @@ export function Results() {
   const sortNote = sort === "none" ? "" : `  ${ICON.dot} sort: ${sortLabel(sort)}`;
 
   const status = () => {
+    if (!networkAllowed) {
+      return <Text color={COLOR.warn}>{terminalSafeText(vpn.reason)}</Text>;
+    }
+    if (activeCat?.group && tabSources.length === 0) {
+      return <Text dimColor>{`No ${activeCat.label.toLowerCase()} sources enabled.`}</Text>;
+    }
+    if (searchSources.length === 0) {
+      return <Text dimColor>No sources enabled.</Text>;
+    }
     if (search.loading) {
       if (results.length > 0)
         return <Text dimColor>{`searching… ${search.done}/${search.total} sources${sortNote}`}</Text>;
@@ -262,7 +287,7 @@ export function Results() {
     }
     if (results.length === 0) {
       if (erroredCount >= search.total) {
-        const downAll = SOURCES.filter((s) => search.perSource[s.id]?.error);
+        const downAll = searchSources.filter((s) => search.perSource[s.id]?.error);
         return (
           <Text color={COLOR.warn}>
             {`Couldn't reach any source. They may be down${outageCodes(downAll)}.`}
@@ -282,7 +307,7 @@ export function Results() {
         return <Text dimColor>{`No ${activeCat.label.toLowerCase()} results yet. Try another tab or a search.`}</Text>;
       return (
         <Text dimColor>
-          {browsing ? "Nothing new right now." : `No results for "${truncate(query, 28)}".`}
+          {browsing ? "Nothing new right now." : `No results for "${truncate(terminalSafeText(query), 28)}".`}
         </Text>
       );
     }

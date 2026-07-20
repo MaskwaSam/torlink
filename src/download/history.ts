@@ -2,6 +2,7 @@ import { promises as fs, mkdirSync, writeFileSync, renameSync } from "node:fs";
 import path from "node:path";
 import { historyFile } from "../config/paths";
 import { serializeWrites, writeJsonAtomic } from "../util/atomic";
+import { parseInfoHash } from "../sources/magnet";
 import type { SourceId } from "../sources/types";
 
 export const HISTORY_CAP = 500;
@@ -31,10 +32,14 @@ export function saveHistorySync(items: HistoryItem[]): void {
   } catch {}
 }
 
-function isHistoryItem(v: unknown): v is HistoryItem {
-  if (!v || typeof v !== "object") return false;
+function toHistoryItem(v: unknown): HistoryItem | null {
+  if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
-  return typeof r.id === "string" && typeof r.name === "string" && typeof r.magnet === "string";
+  if (typeof r.id !== "string" || typeof r.name !== "string" || typeof r.magnet !== "string") {
+    return null;
+  }
+  const id = parseInfoHash(r.id);
+  return id ? ({ ...r, id } as HistoryItem) : null;
 }
 
 export async function loadHistory(): Promise<HistoryItem[]> {
@@ -46,7 +51,12 @@ export async function loadHistory(): Promise<HistoryItem[]> {
   }
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isHistoryItem).slice(0, HISTORY_CAP) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .map(toHistoryItem)
+          .filter((item): item is HistoryItem => item !== null)
+          .slice(0, HISTORY_CAP)
+      : [];
   } catch {
     return [];
   }

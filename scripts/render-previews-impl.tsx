@@ -79,9 +79,23 @@ function makeStore(
 ): Store {
   const noop = (): void => {};
   return {
-    config: { downloadDir: "~/Downloads/torlink" } as Config,
+    config: {
+      downloadDir: "~/Downloads/torlink",
+      trackers: [],
+      autoResumeTorrents: true,
+      requireSurfsharkVpn: true,
+      autoStopSeeding: false,
+      disabledSources: [],
+    },
     setConfig: noop,
     queue: fakeQueue(items, history, seeds),
+    vpn: {
+      ok: true,
+      label: "Surfshark VPN",
+      activeInterfaces: ["utun4"],
+      reason: "Surfshark VPN detected on utun4.",
+    },
+    networkAllowed: true,
     view: "browser",
     setView: noop,
     query: "",

@@ -15,6 +15,7 @@ const FILTERS: NavItem[] = CATEGORIES.map((c) => ({
 const LIBRARY: NavItem[] = [
   { key: "downloads", label: "Downloads" },
   { key: "seeding", label: "Seeding" },
+  { key: "sources", label: "Sources" },
 ];
 
 const BADGED = (key: Section): boolean => key === "downloads" || key === "seeding";
