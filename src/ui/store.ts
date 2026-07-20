@@ -8,7 +8,15 @@ import type { SourceGroup, SourceId } from "../sources/types";
 
 export type View = "splash" | "browser";
 
-export type Category = "all" | "games" | "movies" | "tv" | "anime" | "books" | "audiobooks";
+export type Category =
+  | "all"
+  | "games"
+  | "movies"
+  | "tv"
+  | "anime"
+  | "books"
+  | "audiobooks"
+  | "music";
 
 export type Section = Category | "downloads" | "seeding" | "sources";
 
@@ -20,6 +28,7 @@ export const CATEGORIES: { key: Category; label: string; group?: SourceGroup }[]
   { key: "anime", label: "Anime", group: "Anime" },
   { key: "books", label: "Books", group: "Books" },
   { key: "audiobooks", label: "Audiobooks", group: "Audiobooks" },
+  { key: "music", label: "Music", group: "Music" },
 ];
 
 export type Region = "sidebar" | "content" | "help";

@@ -7,9 +7,22 @@ export function reconcileQueue(items: QueueItem[]): QueueItem[] {
     if (!it?.id || seen.has(it.id)) continue;
     seen.add(it.id);
     if (it.status === "completed") continue;
-    const status =
-      it.status === "failed" ? "failed" : it.status === "paused" ? "paused" : "downloading";
-    out.push({ ...it, status, speed: 0, peers: 0, eta: undefined });
+    const legacy = it.backend !== "transmission";
+    const status = legacy
+      ? "paused"
+      : it.status === "failed"
+        ? "failed"
+        : it.status === "paused"
+          ? "paused"
+          : "downloading";
+    out.push({
+      ...it,
+      status,
+      speed: 0,
+      peers: 0,
+      eta: undefined,
+      pauseReason: legacy ? undefined : it.pauseReason,
+    });
   }
   return out;
 }

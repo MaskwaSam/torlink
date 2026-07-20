@@ -12,6 +12,10 @@ describe("source registry", () => {
       "tpb-audiobooks",
       "x1337-audiobooks",
     ]);
+    expect(groups.find((g) => g.group === "Music")?.sources.map((s) => s.id)).toEqual([
+      "tpb-music",
+      "x1337-music",
+    ]);
   });
 
   it("keeps every source id unique", () => {
@@ -26,6 +30,7 @@ describe("source registry", () => {
   it("uses category suffixes for repeated provider labels", () => {
     expect(sourceDisplayName(SOURCES.find((s) => s.id === "tpb-movies")!)).toBe("TPB Movies");
     expect(sourceDisplayName(SOURCES.find((s) => s.id === "x1337-books")!)).toBe("1337x Books");
+    expect(sourceDisplayName(SOURCES.find((s) => s.id === "tpb-music")!)).toBe("TPB Music");
     expect(sourceDisplayName(SOURCES.find((s) => s.id === "fitgirl")!)).toBe("FitGirl");
   });
 });

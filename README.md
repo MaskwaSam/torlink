@@ -4,13 +4,25 @@
 
 Finding a torrent these days sucks. One site is a minefield of fake download buttons. Another hides the real link under a popup that spawns two more tabs. And after all that, half the results are dead, zero seeders.
 
-torlink is a torrent finder that lives in your terminal, with zero setup and nothing to configure. One search checks a short, curated list of reputable sources at once, and whatever you pick downloads straight to your computer. The files are yours, saved to your downloads folder.
+torlink is a torrent finder that lives in your terminal. One search checks a short, curated list of reputable sources at once, and whatever you pick downloads straight to your computer through a TorLink-managed local Transmission daemon. The files are yours, saved to your downloads folder.
+
+> **Fork status:** This is a classroom-oriented fork of
+> [`baairon/torlink`](https://github.com/baairon/torlink), based on upstream
+> commit `b8f8872`. It adds hardened terminal controls, an optional Surfshark
+> gate, and a localhost-only Transmission backend. See
+> [`FORK_NOTES.md`](FORK_NOTES.md) for provenance and the modification summary.
 
 ## Get started
 
-1. **Install Node** (from [nodejs.org](https://nodejs.org)), it's all torlink needs.
-2. **Open your terminal.**
-3. **Start it:**
+1. **Install Node** from [nodejs.org](https://nodejs.org).
+2. **Install Transmission's CLI backend** on macOS:
+
+   ```sh
+   brew install transmission-cli
+   ```
+
+3. **Open your terminal.**
+4. **Start it:**
 
    ```sh
    npx torlnk
@@ -28,11 +40,11 @@ Type what you're looking for and press Enter. Results stream in from every sourc
 
 ## Your downloads
 
-Active downloads sit up top with their progress, speed, and time left; when one finishes it drops into Recently downloaded just below, so the list stays tidy. Everything's still there when you come back, and anything interrupted picks up where it left off. Highlight a row and press `delete` to remove it from the Downloads page. Press `a` to toggle torrent auto-resume if you want unfinished downloads and active seeds to stay paused after a restart or VPN reconnect. Press `t` to toggle tracker discovery; it is on by default because many magnets need trackers to find peers. Press `e` to toggle auto-stop seeding if you want finished downloads to stop instead of seeding automatically. Press `v` to toggle the Surfshark VPN requirement.
+Active downloads sit up top with their progress, speed, peers, and time left; when one finishes it drops into Recently downloaded just below, so the list stays tidy. Everything's still there when you come back, and anything interrupted picks up where it left off. Highlight a row and press `delete` to remove it from the Downloads page. Press `a` to toggle torrent auto-resume if you want unfinished downloads and active seeds to stay paused after a restart or VPN reconnect. Press `r` on a download or seed to ask Transmission to verify/rescan it. Press `e` to toggle auto-stop seeding if you want finished downloads to stop instead of seeding automatically. Press `v` to toggle the Surfshark VPN requirement.
 
-Downloads run in the background while you keep searching, so you can queue up as many as you want. They save to your downloads folder, and the Downloads pane keeps tabs on each one. When something finishes it keeps seeding automatically so the next person can find it too, and the Seeding tab lets you pause or stop that anytime.
+Downloads run in the background while you keep searching, so you can queue up as many as you want. TorLink starts its own localhost-only `transmission-daemon` when needed and stops that managed daemon when TorLink exits. They save to your downloads folder, and the Downloads pane keeps tabs on each one. When something finishes it keeps seeding automatically so the next person can find it too, and the Seeding tab lets you pause or stop that anytime.
 
-The Sources pane lets you turn individual providers on or off, including FitGirl, YTS, TPB Movies, TPB Books, 1337x Movies, and 1337x Books. Disabled sources are skipped during search.
+The Sources pane lets you turn individual providers on or off, including FitGirl, YTS, TPB Movies, TPB Books, TPB Music, 1337x Movies, 1337x Books, and 1337x Music. Disabled sources are skipped during search.
 
 <p align="center">
   <img src="preview/downloads.svg" alt="torlink's Downloads pane: live progress on top, recently downloaded below" style="max-width: 832px; width: 100%; height: auto;">
@@ -50,6 +62,7 @@ A short, hand-picked list of trusted sources:
 | Anime | Nyaa, SubsPlease |
 | Books | The Pirate Bay, 1337x |
 | Audiobooks | The Pirate Bay, 1337x |
+| Music | The Pirate Bay, 1337x |
 
 Games are the only category that can run code, so they come from FitGirl alone, a repacker with a long, trusted track record; everything else is plain video and subtitles. If a source is down, the search carries on without it, and torlink tells you which one is offline.
 
@@ -72,11 +85,22 @@ To run or work on torlink locally:
    npx torlnk
    ```
 
+4. Run the verification gates:
+   ```sh
+   npm test
+   npm run typecheck
+   npm run build
+   npm run verify:transmission
+   npm audit
+   ```
+
 Before opening a PR, skim [CONTRIBUTING.md](CONTRIBUTING.md); it lays out the bar with examples from real merged PRs.
 
 ## Privacy
 
-Your files stay on your disk, and nothing routes through a central server; torlink only talks to the torrent network directly. Once a download finishes it keeps seeding by default, sharing it back so the next person can find it just as easily. The network only works because people pass things along, and even a few minutes makes a real difference. If you'd rather not, opt out anytime: open the Seeding tab, press `p` to pause or stop any item, and press it again to pick it back up. Always your call.
+Your files stay on your disk, and nothing routes through a central server; torlink only talks to search sources and the torrent network directly. If Surfshark enforcement is on and Surfshark disconnects, TorLink stops active torrents and queues new ones paused until the gate opens again. This is an app-level pause/resume gate, not a system kill switch; enable Surfshark's own kill switch if you need protection when TorLink is killed unexpectedly.
+
+Once a download finishes it keeps seeding by default, sharing it back so the next person can find it just as easily. The network only works because people pass things along, and even a few minutes makes a real difference. If you'd rather not, opt out anytime: open the Seeding tab, press `p` to pause or stop any item, and press it again to pick it back up. Always your call.
 
 ## Star History
 

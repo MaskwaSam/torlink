@@ -5,6 +5,7 @@ import type { QueueItem } from "./types";
 function item(over: Partial<QueueItem>): QueueItem {
   return {
     id: "x",
+    backend: "transmission",
     name: "n",
     magnet: "m",
     dir: "d",
@@ -37,6 +38,18 @@ describe("reconcileQueue", () => {
       expect(it.peers).toBe(0);
       expect(it.eta).toBeUndefined();
     }
+  });
+
+  it("keeps legacy entries visible but paused", () => {
+    const out = reconcileQueue([item({ id: "legacy", backend: undefined, status: "downloading" })]);
+    expect(out[0]).toMatchObject({
+      id: "legacy",
+      status: "paused",
+      pauseReason: undefined,
+      speed: 0,
+      peers: 0,
+      eta: undefined,
+    });
   });
 
   it("skips entries without an id", () => {

@@ -8,7 +8,8 @@
   },
   "files": [
     "dist",
-    "preview"
+    "preview",
+    "assets"
   ],
   "engines": {
     "node": ">=22"
@@ -20,7 +21,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify:seeding": "tsx scripts/verify-seeding.ts",
+    "verify:transmission": "tsx scripts/verify-transmission.ts",
     "previews": "tsx scripts/render-previews.tsx",
     "prepublishOnly": "npm run build"
   },
@@ -32,25 +33,25 @@
     "magnet",
     "magnet-links",
     "p2p",
-    "webtorrent",
+    "transmission",
     "seeding",
     "tui",
     "terminal",
     "cli",
     "ink",
-    "zero-configuration",
-    "zero-setup",
+    "transmission-daemon",
+    "homebrew",
     "fitgirl"
   ],
   "author": "bairon",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/baairon/torlink.git"
+    "url": "git+https://github.com/MaskwaSam/torlink.git"
   },
-  "homepage": "https://github.com/baairon/torlink#readme",
+  "homepage": "https://github.com/MaskwaSam/torlink#readme",
   "bugs": {
-    "url": "https://github.com/baairon/torlink/issues"
+    "url": "https://github.com/MaskwaSam/torlink/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -59,8 +60,7 @@
     "env-paths": "^4.0.0",
     "ink": "^7.0.5",
     "parse-torrent": "^11.0.21",
-    "react": "^19.2.7",
-    "webtorrent": "^2.4.1"
+    "react": "^19.2.7"
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
@@ -70,5 +70,8 @@
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
   }
 }

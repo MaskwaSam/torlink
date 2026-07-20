@@ -8,11 +8,13 @@ const MOVIE_CATS = new Set([201, 202, 207, 209]);
 const TV_CATS = new Set([205, 208]);
 const BOOK_CATS = new Set([601, 602]);
 const AUDIOBOOK_CATS = new Set([102]);
+const MUSIC_CATS = new Set([101, 104]);
 
 const TOP_MOVIES = `${API}/precompiled/data_top100_207.json`;
 const TOP_TV = `${API}/precompiled/data_top100_208.json`;
 const TOP_BOOKS = `${API}/precompiled/data_top100_601.json`;
 const TOP_AUDIOBOOKS = `${API}/precompiled/data_top100_102.json`;
+const TOP_MUSIC = `${API}/precompiled/data_top100_101.json`;
 
 interface ApibayItem {
   id?: string;
@@ -109,4 +111,12 @@ export const tpbAudiobooks: Source = {
   homepage: "https://thepiratebay.org",
   search: (query, opts = {}) =>
     search(query, AUDIOBOOK_CATS, TOP_AUDIOBOOKS, "tpb-audiobooks", opts),
+};
+
+export const tpbMusic: Source = {
+  id: "tpb-music",
+  label: "TPB",
+  group: "Music",
+  homepage: "https://thepiratebay.org",
+  search: (query, opts = {}) => search(query, MUSIC_CATS, TOP_MUSIC, "tpb-music", opts),
 };

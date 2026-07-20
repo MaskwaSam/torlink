@@ -6,8 +6,11 @@ export type SeedStatus = "seeding" | "paused" | "missing";
 
 export type PauseReason = "network";
 
+export type DownloadBackend = "transmission";
+
 export interface SeedItem {
   id: string;
+  backend?: DownloadBackend;
   name: string;
   source?: SourceId;
   magnet: string;
@@ -22,6 +25,7 @@ export interface SeedItem {
 
 export interface QueueItem {
   id: string;
+  backend?: DownloadBackend;
   name: string;
   source?: SourceId;
   magnet: string;

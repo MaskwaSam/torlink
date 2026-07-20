@@ -1,4 +1,8 @@
-import WebTorrent, { type Torrent } from "webtorrent";
+import { constants as fsConstants, promises as fs } from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import { transmissionDir } from "../config/paths";
 
 export interface TorrentProgress {
   progress: number;
@@ -16,10 +20,6 @@ export interface TorrentMeta {
   name: string;
   total: number;
   files: number;
-  // The .torrent metadata (piece hashes), available once metadata arrives. We
-  // persist it so a later re-seed can verify the on-disk file without having to
-  // re-fetch metadata from the swarm (which a bare magnet would require).
-  torrentFile?: Uint8Array;
 }
 
 export interface AddHandlers {
@@ -28,158 +28,382 @@ export interface AddHandlers {
   onError?: (message: string) => void;
 }
 
+export interface TorrentBackend {
+  add(id: string, source: string, dir: string, handlers: AddHandlers): void;
+  pause(id: string): void;
+  resume(id: string): void;
+  remove(id: string): void;
+  verify(id: string): void;
+  stats(id: string): Promise<TorrentProgress | null>;
+  destroy(): void;
+}
+
+export const TRANSMISSION_INSTALL_HINT = "Transmission backend missing. Install with: brew install transmission-cli";
+
+const RPC_PATH = "/transmission/rpc";
+const RPC_FIELDS = [
+  "id",
+  "hashString",
+  "name",
+  "totalSize",
+  "leftUntilDone",
+  "percentDone",
+  "rateDownload",
+  "rateUpload",
+  "uploadedEver",
+  "peersConnected",
+  "eta",
+  "error",
+  "errorString",
+] as const;
+
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export const BASE_WEBTORRENT_OPTIONS = {
-  lsd: false,
-  utPex: false,
-  natUpnp: false,
-  natPmp: false,
-} as const;
-
-export function webTorrentOptions(tracker: boolean) {
-  return { ...BASE_WEBTORRENT_OPTIONS, tracker };
+export class TransmissionRpcError extends Error {
+  constructor(
+    public readonly result: string,
+    public readonly method: string,
+  ) {
+    super(`Transmission ${method} failed: ${result}`);
+  }
 }
 
-export class TorrentEngine {
-  private clients = new Map<boolean, WebTorrent>();
-  private torrents = new Map<string, { torrent: Torrent; tracker: boolean }>();
-  private trackerDiscovery = true;
+interface RpcEnvelope<T> {
+  result?: string;
+  arguments?: T;
+}
 
-  setTrackerDiscoveryEnabled(enabled: boolean): void {
-    this.trackerDiscovery = enabled;
+interface TorrentAddResponse {
+  "torrent-added"?: TransmissionTorrent;
+  "torrent-duplicate"?: TransmissionTorrent;
+}
+
+interface TorrentGetResponse {
+  torrents?: TransmissionTorrent[];
+}
+
+interface TransmissionTorrent {
+  id?: number;
+  hashString?: string;
+  name?: string;
+  totalSize?: number;
+  leftUntilDone?: number;
+  percentDone?: number;
+  rateDownload?: number;
+  rateUpload?: number;
+  uploadedEver?: number;
+  peersConnected?: number;
+  eta?: number;
+  error?: number;
+  errorString?: string;
+}
+
+type FetchLike = typeof fetch;
+
+export class TransmissionRpcClient {
+  private sessionId: string | null = null;
+
+  constructor(
+    private readonly url: string,
+    private readonly fetchImpl: FetchLike = fetch,
+  ) {}
+
+  async request<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
+    const body = JSON.stringify({ method, arguments: args });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (this.sessionId) headers["X-Transmission-Session-Id"] = this.sessionId;
+      const res = await this.fetchImpl(this.url, { method: "POST", headers, body });
+      if (res.status === 409) {
+        this.sessionId = res.headers.get("x-transmission-session-id");
+        if (this.sessionId && attempt === 0) continue;
+      }
+      if (!res.ok) throw new Error(`Transmission RPC HTTP ${res.status}`);
+      const json = (await res.json()) as RpcEnvelope<T>;
+      const result = json.result ?? "success";
+      if (result !== "success") throw new TransmissionRpcError(result, method);
+      return (json.arguments ?? {}) as T;
+    }
+    throw new Error("Transmission RPC session negotiation failed");
   }
 
-  private ensureClient(tracker: boolean): WebTorrent {
-    let client = this.clients.get(tracker);
-    if (!client) {
-      client = new WebTorrent(webTorrentOptions(tracker));
-      client.on("error", () => {});
-      this.clients.set(tracker, client);
+  async add(source: string, dir: string): Promise<TransmissionTorrent> {
+    const args: Record<string, unknown> = { "download-dir": dir, paused: false };
+    if (source.endsWith(".torrent")) {
+      args.metainfo = await fs.readFile(source, "base64");
+    } else {
+      args.filename = source;
     }
-    return client;
+    const res = await this.request<TorrentAddResponse>("torrent-add", args);
+    const torrent = res["torrent-added"] ?? res["torrent-duplicate"];
+    if (!torrent?.hashString) throw new Error("Transmission did not return a torrent hash");
+    return torrent;
   }
 
-  private destroyIdleClient(tracker: boolean): void {
-    for (const record of this.torrents.values()) {
-      if (record.tracker === tracker) return;
-    }
-    const client = this.clients.get(tracker);
-    if (!client) return;
-    this.clients.delete(tracker);
-    setImmediate(() => {
-      try {
-        client.destroy();
-      } catch {}
-    });
+  async get(ids: string[]): Promise<TransmissionTorrent[]> {
+    if (ids.length === 0) return [];
+    const res = await this.request<TorrentGetResponse>("torrent-get", { ids, fields: RPC_FIELDS });
+    return res.torrents ?? [];
   }
 
-  // `source` is a magnet URI, an infoHash, or a path to a .torrent file. Seeding
-  // an existing file passes the stored .torrent path so webtorrent can verify it
-  // locally instead of re-fetching metadata from the swarm.
-  // `announce` supplements whatever trackers are already in the source URI;
-  // webtorrent dedupes internally.
-  add(
-    id: string,
-    source: string,
-    dir: string,
-    handlers: AddHandlers,
-    announce?: string[],
-  ): void {
-    const tracker = this.trackerDiscovery;
-    const existing = this.torrents.get(id);
-    if (existing) {
-      this.torrents.delete(id);
-      try {
-        existing.torrent.destroy();
-      } catch {}
-      this.destroyIdleClient(existing.tracker);
-    }
-    const client = this.ensureClient(tracker);
+  async start(ids: string[]): Promise<void> {
+    await this.request("torrent-start", { ids });
+  }
 
-    const opts = announce && announce.length > 0 ? { path: dir, announce } : { path: dir };
-    let torrent: Torrent;
+  async stop(ids: string[]): Promise<void> {
+    await this.request("torrent-stop", { ids });
+  }
+
+  async remove(ids: string[]): Promise<void> {
+    await this.request("torrent-remove", { ids, "delete-local-data": false });
+  }
+
+  async verify(ids: string[]): Promise<void> {
+    await this.request("torrent-verify", { ids });
+  }
+}
+
+export interface TransmissionEndpoint {
+  url: string;
+  destroy(): void;
+}
+
+export interface DaemonRunner {
+  start(downloadDir: string): Promise<TransmissionEndpoint>;
+  destroy?(): void;
+}
+
+export function transmissionCandidates(envPath = process.env.PATH ?? ""): string[] {
+  const fromPath = envPath
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) => path.join(dir, "transmission-daemon"));
+  return [
+    ...fromPath,
+    "/opt/homebrew/bin/transmission-daemon",
+    "/usr/local/bin/transmission-daemon",
+    "/usr/bin/transmission-daemon",
+  ];
+}
+
+export async function findTransmissionDaemon(candidates = transmissionCandidates()): Promise<string | null> {
+  const seen = new Set<string>();
+  for (const file of candidates) {
+    if (seen.has(file)) continue;
+    seen.add(file);
     try {
-      torrent = client.add(source, opts);
-    } catch (e) {
-      handlers.onError?.(message(e));
-      return;
-    }
-    this.torrents.set(id, { torrent, tracker });
+      await fs.access(file, fsConstants.X_OK);
+      return file;
+    } catch {}
+  }
+  return null;
+}
 
-    torrent.on("metadata", () => {
-      handlers.onMetadata?.({
-        name: torrent.name,
-        total: torrent.length,
-        files: torrent.files?.length ?? 0,
-        torrentFile: torrent.torrentFile,
+async function freeLocalPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      server.close(() => {
+        if (addr && typeof addr === "object") resolve(addr.port);
+        else reject(new Error("Could not allocate localhost port"));
       });
     });
-    torrent.on("done", () => {
-      // A finished torrent is a complete, verified torrent: keep it alive so it
-      // can seed. The queue owns its lifetime from here (remove/destroy).
-      handlers.onDone?.();
-    });
-    torrent.on("error", (err: unknown) => {
-      handlers.onError?.(message(err));
-      this.torrents.delete(id);
-      try {
-        torrent.destroy();
-      } catch {}
-      this.destroyIdleClient(tracker);
-    });
-  }
+  });
+}
 
-  // The TCP port the client accepts incoming peers on (diagnostics / tests).
-  listenPort(): number | null {
-    for (const client of this.clients.values()) {
-      if (client.torrentPort) return client.torrentPort;
+async function waitForRpc(url: string, fetchImpl: FetchLike, timeoutMs = 8_000): Promise<void> {
+  const client = new TransmissionRpcClient(url, fetchImpl);
+  const start = Date.now();
+  let lastError: unknown;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await client.request("session-get");
+      return;
+    } catch (e) {
+      lastError = e;
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
-    return null;
   }
+  throw lastError instanceof Error ? lastError : new Error("Transmission RPC did not become ready");
+}
 
-  stats(id: string): TorrentProgress | null {
-    const record = this.torrents.get(id);
-    if (!record) return null;
-    const t = record.torrent;
-    return {
-      progress: t.progress,
-      downloaded: t.downloaded,
-      total: t.length,
-      speed: t.downloadSpeed,
-      uploadSpeed: t.uploadSpeed,
-      uploaded: t.uploaded,
-      peers: t.numPeers,
-      timeRemaining: t.timeRemaining,
-      name: t.name,
+export interface ManagedTransmissionDaemonOptions {
+  binary?: string;
+  stateDir?: string;
+  rpcPort?: number;
+  fetchImpl?: FetchLike;
+  spawnImpl?: typeof spawn;
+}
+
+export class ManagedTransmissionDaemon implements DaemonRunner {
+  private endpoint: TransmissionEndpoint | null = null;
+
+  constructor(private readonly opts: ManagedTransmissionDaemonOptions = {}) {}
+
+  async start(downloadDir: string): Promise<TransmissionEndpoint> {
+    if (this.endpoint) return this.endpoint;
+    const binary = this.opts.binary ?? (await findTransmissionDaemon());
+    if (!binary) throw new Error(TRANSMISSION_INSTALL_HINT);
+
+    const root = this.opts.stateDir ?? transmissionDir;
+    const configDir = path.join(root, "daemon-config");
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.mkdir(downloadDir, { recursive: true }).catch(() => {});
+    const port = this.opts.rpcPort ?? (await freeLocalPort());
+    const url = `http://127.0.0.1:${port}${RPC_PATH}`;
+    const args = [
+      "--foreground",
+      "--config-dir",
+      configDir,
+      "--download-dir",
+      downloadDir,
+      "--rpc-bind-address",
+      "127.0.0.1",
+      "--port",
+      String(port),
+      "--allowed",
+      "127.0.0.1",
+      "--no-auth",
+      "--no-portmap",
+    ];
+    const child = (this.opts.spawnImpl ?? spawn)(binary, args, {
+      stdio: "ignore",
+      detached: false,
+    }) as ChildProcess;
+    child.unref();
+    const destroy = (): void => {
+      if (child.exitCode !== null || child.signalCode) return;
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (child.exitCode === null && !child.signalCode) child.kill("SIGKILL");
+      }, 1_500).unref();
     };
-  }
-
-  remove(id: string): void {
-    const record = this.torrents.get(id);
-    this.torrents.delete(id);
-    if (record) {
-      try {
-        record.torrent.destroy();
-      } catch {}
-      this.destroyIdleClient(record.tracker);
+    this.endpoint = { url, destroy };
+    try {
+      await waitForRpc(url, this.opts.fetchImpl ?? fetch);
+      return this.endpoint;
+    } catch (e) {
+      destroy();
+      this.endpoint = null;
+      throw e;
     }
   }
 
   destroy(): void {
-    this.torrents.clear();
-    // Never block shutdown on webtorrent's async teardown: hand off the client
-    // destroy to a later tick and let the OS reclaim sockets if we exit first.
-    const clients = [...this.clients.values()];
-    this.clients.clear();
-    for (const client of clients) {
-      setImmediate(() => {
-        try {
-          client.destroy();
-        } catch {}
+    this.endpoint?.destroy();
+    this.endpoint = null;
+  }
+}
+
+interface TorrentRecord {
+  hash: string;
+  source: string;
+  dir: string;
+  handlers: AddHandlers;
+}
+
+function toProgress(t: TransmissionTorrent): TorrentProgress {
+  const total = t.totalSize ?? 0;
+  const left = t.leftUntilDone ?? Math.max(0, total - Math.round((t.percentDone ?? 0) * total));
+  const downloaded = total > 0 ? Math.max(0, total - left) : 0;
+  return {
+    progress: Math.max(0, Math.min(1, t.percentDone ?? (total ? downloaded / total : 0))),
+    downloaded,
+    total,
+    speed: t.rateDownload ?? 0,
+    uploadSpeed: t.rateUpload ?? 0,
+    uploaded: t.uploadedEver ?? 0,
+    peers: t.peersConnected ?? 0,
+    timeRemaining: (t.eta ?? -1) >= 0 ? (t.eta ?? 0) * 1000 : 0,
+    name: t.name ?? "",
+  };
+}
+
+export class TorrentEngine implements TorrentBackend {
+  private rpc: TransmissionRpcClient | null = null;
+  private endpoint: TransmissionEndpoint | null = null;
+  private records = new Map<string, TorrentRecord>();
+  private starting: Promise<TransmissionRpcClient> | null = null;
+
+  constructor(private readonly runner: DaemonRunner = new ManagedTransmissionDaemon()) {}
+
+  private async client(downloadDir: string): Promise<TransmissionRpcClient> {
+    if (this.rpc) return this.rpc;
+    if (!this.starting) {
+      this.starting = this.runner.start(downloadDir).then((endpoint) => {
+        this.endpoint = endpoint;
+        this.rpc = new TransmissionRpcClient(endpoint.url);
+        return this.rpc;
       });
     }
+    return this.starting;
+  }
+
+  add(id: string, source: string, dir: string, handlers: AddHandlers): void {
+    void (async () => {
+      try {
+        const rpc = await this.client(dir);
+        const torrent = await rpc.add(source, dir);
+        const hash = (torrent.hashString ?? id).toLowerCase();
+        this.records.set(id, { hash, source, dir, handlers });
+        handlers.onMetadata?.({
+          name: torrent.name ?? "",
+          total: torrent.totalSize ?? 0,
+          files: 0,
+        });
+        await rpc.start([hash]);
+      } catch (e) {
+        handlers.onError?.(message(e));
+      }
+    })();
+  }
+
+  pause(id: string): void {
+    const rec = this.records.get(id);
+    if (!rec) return;
+    void this.rpc?.stop([rec.hash]).catch(() => {});
+  }
+
+  resume(id: string): void {
+    const rec = this.records.get(id);
+    if (rec) {
+      void this.rpc?.start([rec.hash]).catch((e) => rec.handlers.onError?.(message(e)));
+      return;
+    }
+  }
+
+  remove(id: string): void {
+    const rec = this.records.get(id);
+    this.records.delete(id);
+    if (!rec) return;
+    void this.rpc?.remove([rec.hash]).catch(() => {});
+  }
+
+  verify(id: string): void {
+    const rec = this.records.get(id);
+    if (!rec) return;
+    void this.rpc?.verify([rec.hash]).catch((e) => rec.handlers.onError?.(message(e)));
+  }
+
+  async stats(id: string): Promise<TorrentProgress | null> {
+    const rec = this.records.get(id);
+    if (!rec || !this.rpc) return null;
+    const [torrent] = await this.rpc.get([rec.hash]);
+    if (!torrent) return null;
+    if (torrent.error && torrent.errorString) rec.handlers.onError?.(torrent.errorString);
+    return toProgress(torrent);
+  }
+
+  destroy(): void {
+    this.records.clear();
+    if (this.runner.destroy) this.runner.destroy();
+    else this.endpoint?.destroy();
+    this.endpoint = null;
+    this.rpc = null;
+    this.starting = null;
   }
 }

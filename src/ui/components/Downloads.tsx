@@ -80,6 +80,9 @@ export function Downloads() {
         const it = active[clamped];
         if (!it) return;
         if (deleteCommand) queue.cancel(it.id);
+        else if (input === "r") {
+          queue.verify(it.id);
+        }
         else if (input === "p") {
           if (it.status === "paused" && !networkAllowed) setNotice(vpn.reason);
           else queue.togglePause(it.id);

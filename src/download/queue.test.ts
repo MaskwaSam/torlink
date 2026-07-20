@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { DownloadQueue, strayDownload } from "./queue";
 import type { HistoryItem } from "./history";
 import type { QueueItem } from "./types";
+import type { AddHandlers, TorrentBackend, TorrentProgress } from "./engine";
 
 const HASH1 = "1111111111111111111111111111111111111111";
 const HASH2 = "2222222222222222222222222222222222222222";
@@ -10,7 +11,45 @@ const HASH4 = "4444444444444444444444444444444444444444";
 
 type QueueInternals = {
   complete: (it: QueueItem) => void;
+  tick: () => Promise<void>;
 };
+
+class FakeBackend implements TorrentBackend {
+  adds: string[] = [];
+  pauses: string[] = [];
+  resumes: string[] = [];
+  removes: string[] = [];
+  verifies: string[] = [];
+  statsById = new Map<string, TorrentProgress>();
+  handlers = new Map<string, AddHandlers>();
+
+  add(id: string, _source: string, _dir: string, handlers: AddHandlers): void {
+    this.adds.push(id);
+    this.handlers.set(id, handlers);
+  }
+
+  pause(id: string): void {
+    this.pauses.push(id);
+  }
+
+  resume(id: string): void {
+    this.resumes.push(id);
+  }
+
+  remove(id: string): void {
+    this.removes.push(id);
+  }
+
+  verify(id: string): void {
+    this.verifies.push(id);
+  }
+
+  async stats(id: string): Promise<TorrentProgress | null> {
+    return this.statsById.get(id) ?? null;
+  }
+
+  destroy(): void {}
+}
 
 function h(over: Partial<HistoryItem> = {}): HistoryItem {
   return {
@@ -27,6 +66,7 @@ function h(over: Partial<HistoryItem> = {}): HistoryItem {
 function item(over: Partial<QueueItem> = {}): QueueItem {
   return {
     id: HASH1,
+    backend: "transmission",
     name: "Some Download",
     magnet: `magnet:?xt=urn:btih:${HASH1}`,
     dir: "/downloads",
@@ -62,7 +102,7 @@ describe("DownloadQueue seeding", () => {
   it("persistSync flushes every state file without touching the engine", () => {
     const q = new DownloadQueue();
     q.restoreHistory([h({ id: HASH3 })]);
-    // No engine work, so this never spins up webtorrent and never throws even
+    // No engine work, so this never starts Transmission and never throws even
     // with a populated history.
     expect(() => q.persistSync()).not.toThrow();
   });
@@ -133,6 +173,7 @@ describe("DownloadQueue network gate", () => {
     const q = new DownloadQueue();
     const item: QueueItem = {
       id: HASH2,
+      backend: "transmission",
       name: "Restored",
       magnet: `magnet:?xt=urn:btih:${HASH2}`,
       dir: "/downloads",
@@ -156,6 +197,7 @@ describe("DownloadQueue network gate", () => {
     const q = new DownloadQueue();
     const item: QueueItem = {
       id: HASH2,
+      backend: "transmission",
       name: "Restored",
       magnet: `magnet:?xt=urn:btih:${HASH2}`,
       dir: "/downloads",
@@ -179,6 +221,7 @@ describe("DownloadQueue network gate", () => {
     const q = new DownloadQueue();
     const item: QueueItem = {
       id: HASH2,
+      backend: "transmission",
       name: "Restored",
       magnet: `magnet:?xt=urn:btih:${HASH2}`,
       dir: "/downloads",
@@ -218,6 +261,91 @@ describe("DownloadQueue network gate", () => {
     expect(q.getSeed(HASH3)?.status).toBe("paused");
     expect(q.getSeed(HASH3)?.pauseReason).toBeUndefined();
     expect(q.seedingCount).toBe(0);
+    q.suspend();
+  });
+});
+
+describe("DownloadQueue Transmission backend", () => {
+  it("adds, pauses, resumes, verifies, and deletes through the backend", () => {
+    const backend = new FakeBackend();
+    const q = new DownloadQueue(backend);
+    q.add({ id: HASH1, name: "One", magnet: `magnet:?xt=urn:btih:${HASH1}` }, "/downloads");
+    expect(q.getItems()[0]).toMatchObject({ id: HASH1, backend: "transmission", status: "downloading" });
+    expect(backend.adds).toEqual([HASH1]);
+
+    q.pause(HASH1);
+    expect(q.getItems()[0]?.status).toBe("paused");
+    expect(backend.pauses).toEqual([HASH1]);
+
+    q.resume(HASH1);
+    expect(q.getItems()[0]?.status).toBe("downloading");
+    expect(backend.adds).toEqual([HASH1, HASH1]);
+
+    q.verify(HASH1);
+    expect(backend.verifies).toEqual([HASH1]);
+
+    q.cancel(HASH1);
+    expect(q.getItems()).toEqual([]);
+    expect(backend.removes).toEqual([HASH1]);
+    q.suspend();
+  });
+
+  it("moves a completed Transmission download to history and seeding on the poll tick", async () => {
+    const backend = new FakeBackend();
+    const q = new DownloadQueue(backend);
+    q.add({ id: HASH2, name: "Two", magnet: `magnet:?xt=urn:btih:${HASH2}` }, "/downloads");
+    backend.statsById.set(HASH2, {
+      progress: 1,
+      downloaded: 100,
+      total: 100,
+      speed: 0,
+      uploadSpeed: 5,
+      uploaded: 10,
+      peers: 2,
+      timeRemaining: 0,
+      name: "Two",
+    });
+
+    await (q as unknown as QueueInternals).tick();
+    expect(q.getItems()).toEqual([]);
+    expect(q.getHistory()[0]).toMatchObject({ id: HASH2, name: "Two", sizeBytes: 100 });
+    expect(q.getSeed(HASH2)?.status).toBe("seeding");
+    q.suspend();
+  });
+
+  it("stops active torrents while the Surfshark gate is closed and resumes only when allowed", () => {
+    const backend = new FakeBackend();
+    const q = new DownloadQueue(backend);
+    q.add({ id: HASH3, name: "Three", magnet: `magnet:?xt=urn:btih:${HASH3}` }, "/downloads");
+
+    q.setNetworkAllowed(false);
+    expect(q.getItems()[0]).toMatchObject({ status: "paused", pauseReason: "network" });
+    expect(backend.pauses).toEqual([HASH3]);
+
+    q.setNetworkAllowed(true);
+    expect(q.getItems()[0]).toMatchObject({ status: "downloading", pauseReason: undefined });
+    expect(backend.adds).toEqual([HASH3, HASH3]);
+    q.suspend();
+  });
+
+  it("restores legacy WebTorrent queue entries as paused without auto-starting them", () => {
+    const backend = new FakeBackend();
+    const q = new DownloadQueue(backend);
+    q.restore([
+      {
+        ...item({ id: HASH4, status: "downloading", speed: 100, peers: 4 }),
+        backend: undefined,
+      },
+    ]);
+
+    expect(q.getItems()[0]).toMatchObject({
+      id: HASH4,
+      status: "paused",
+      pauseReason: undefined,
+      speed: 0,
+      peers: 0,
+    });
+    expect(backend.adds).toEqual([]);
     q.suspend();
   });
 });

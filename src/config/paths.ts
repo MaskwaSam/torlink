@@ -26,3 +26,7 @@ export const seedsFile = path.join(dataDir, "seeds.json");
 // Per-torrent .torrent metadata, captured during download so a re-seed can
 // verify the on-disk file locally instead of re-fetching it from the swarm.
 export const torrentsDir = path.join(dataDir, "torrents");
+
+// TorLink-owned Transmission daemon state. This is intentionally separate from
+// Transmission.app so TorLink owns the daemon lifecycle and localhost RPC config.
+export const transmissionDir = path.join(dataDir, "transmission");

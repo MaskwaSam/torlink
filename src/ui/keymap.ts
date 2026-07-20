@@ -20,7 +20,6 @@ export const HELP_GROUPS: HelpGroup[] = [
       { keys: "esc", label: "Back" },
       { keys: "o", label: "Download folder" },
       { keys: "v", label: "Toggle Surfshark requirement" },
-      { keys: "t", label: "Toggle tracker discovery" },
       { keys: "q", label: "Quit" },
     ],
   },
@@ -42,6 +41,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       { keys: "e", label: "Toggle auto-stop seeding" },
       { keys: "del, c", label: "Delete/cancel highlighted item" },
       { keys: "f", label: "Retry failed" },
+      { keys: "r", label: "Verify/rescan highlighted torrent" },
       { keys: "d", label: "Download again" },
       { keys: "x", label: "Clear recent" },
     ],
@@ -50,6 +50,7 @@ export const HELP_GROUPS: HelpGroup[] = [
     title: "Seeding",
     hints: [
       { keys: "p", label: "Pause/resume" },
+      { keys: "r", label: "Verify/rescan" },
       { keys: "e", label: "Toggle auto-stop seeding" },
       { keys: "c", label: "Remove from list" },
     ],
@@ -89,7 +90,7 @@ export function footerHints(
   if (section === "seeding") {
     const label =
       seedFocus === "seeding" ? "Pause" : seedFocus === "missing" ? "Retry" : "Resume";
-    return [{ keys: "p", label }, { keys: "c", label: "Remove" }, SWITCH, ALWAYS];
+    return [{ keys: "p", label }, { keys: "r", label: "Verify" }, { keys: "c", label: "Remove" }, SWITCH, ALWAYS];
   }
   if (section === "sources") {
     return [
@@ -102,7 +103,7 @@ export function footerHints(
   }
   if (section === "downloads") {
     if (downloadFocus === "paused") {
-      return [{ keys: "p", label: "Resume" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
+      return [{ keys: "p", label: "Resume" }, { keys: "r", label: "Verify" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
     }
     if (downloadFocus === "failed") {
       return [{ keys: "f", label: "Retry" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
@@ -117,7 +118,7 @@ export function footerHints(
         ALWAYS,
       ];
     }
-    return [{ keys: "p", label: "Pause" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
+    return [{ keys: "p", label: "Pause" }, { keys: "r", label: "Verify" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
   }
   return [
     NAVIGATE,

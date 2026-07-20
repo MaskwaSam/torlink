@@ -66,6 +66,9 @@ export function Seeding() {
       } else if (input === "c") {
         const h = history[clamped];
         if (h) queue.removeHistory(h.id);
+      } else if (input === "r") {
+        const h = history[clamped];
+        if (h) queue.verify(h.id);
       }
     },
     { isActive: focused && total > 0 },

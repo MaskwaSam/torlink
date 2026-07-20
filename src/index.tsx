@@ -45,8 +45,8 @@ function forceExit(code = 0): void {
   exiting = true;
   // Exit synchronously and unconditionally. State is already flushed
   // (quitAll -> persistSync, and the unmount effect runs suspend()), so we never
-  // wait on webtorrent releasing its sockets; the OS reclaims them. Unmount
-  // first to restore raw mode, then our own terminal sequences, then go.
+  // wait on async teardown. Unmount first so the queue stops its managed
+  // Transmission daemon, then restore terminal sequences and exit.
   try {
     app?.unmount();
   } catch {}

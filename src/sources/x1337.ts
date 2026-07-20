@@ -10,13 +10,14 @@ const MAX_DETAILS = 8;
 
 const STOP = new Set(["the", "a", "an", "of", "and", "or", "to"]);
 
-type X1337Category = "Movies" | "TV" | "Ebooks" | "Audiobooks";
+type X1337Category = "Movies" | "TV" | "Ebooks" | "Audiobooks" | "Music";
 
 const POPULAR_PATH: Record<X1337Category, string> = {
   Movies: "/popular-movies",
   TV: "/popular-tv",
   Ebooks: "/popular-ebooks",
   Audiobooks: "/popular-audiobooks",
+  Music: "/popular-music",
 };
 
 interface Row {
@@ -179,4 +180,12 @@ export const x1337Audiobooks: Source = {
   group: "Audiobooks",
   homepage: "https://1337x.to",
   search: (query, opts = {}) => search(query, "Audiobooks", "x1337-audiobooks", opts),
+};
+
+export const x1337Music: Source = {
+  id: "x1337-music",
+  label: "1337x",
+  group: "Music",
+  homepage: "https://1337x.to",
+  search: (query, opts = {}) => search(query, "Music", "x1337-music", opts),
 };

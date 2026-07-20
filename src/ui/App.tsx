@@ -124,18 +124,12 @@ export function App({
           ? await magnetFromTorrentFile(initialTorrent)
           : null;
       if (launch) {
-        if (cfg.requireSurfsharkVpn && !vpn.ok) {
-          setNotice(vpn.reason);
-          setView("browser");
-          setSection("downloads");
-          setRegion("content");
-          return;
-        }
         await fs.mkdir(cfg.downloadDir, { recursive: true }).catch(() => {});
         q.add(
           { id: launch.infoHash, name: launch.name, magnet: launch.magnet },
           cfg.downloadDir,
         );
+        if (cfg.requireSurfsharkVpn && !vpn.ok) setNotice(vpn.reason);
         setView("browser");
         setSection("downloads");
         setRegion("content");
@@ -157,9 +151,12 @@ export function App({
     if (!queue) return;
     const onCompleted = (name: string): void =>
       setNotice(`${ICON.done} ${truncate(cleanText(name), 40)}`);
+    const onNotice = (msg: string): void => setNotice(msg);
     queue.on("completed", onCompleted);
+    queue.on("notice", onNotice);
     return () => {
       queue.off("completed", onCompleted);
+      queue.off("notice", onNotice);
     };
   }, [queue]);
 
@@ -196,13 +193,6 @@ export function App({
     const autoResumeTorrents = !config.autoResumeTorrents;
     setConfig({ ...config, autoResumeTorrents });
     setNotice(`Torrent auto-resume ${autoResumeTorrents ? "on" : "off"}.`);
-  }, [config, setConfig]);
-
-  const toggleTrackers = useCallback(() => {
-    if (!config) return;
-    const enableTrackers = !config.enableTrackers;
-    setConfig({ ...config, enableTrackers });
-    setNotice(`Tracker discovery ${enableTrackers ? "on" : "off"}.`);
   }, [config, setConfig]);
 
   const toggleSurfsharkRequirement = useCallback(() => {
@@ -254,14 +244,17 @@ export function App({
       sizeBytes?: number;
     }) => {
       if (!config || !queue) return;
-      if (!requireVpn()) return;
       void fs.mkdir(config.downloadDir, { recursive: true }).catch(() => {});
       queue.add(input, config.downloadDir);
-      setNotice(`Added: ${truncate(cleanText(input.name), 40)}`);
+      setNotice(
+        networkAllowed
+          ? `Added: ${truncate(cleanText(input.name), 40)}`
+          : vpn.reason,
+      );
       setSection("downloads");
       setRegion("content");
     },
-    [config, queue, requireVpn],
+    [config, queue, networkAllowed, vpn.reason],
   );
 
   const copyMagnet = useCallback((input: { name: string; magnet: string }) => {
@@ -398,7 +391,6 @@ export function App({
     rows,
     setConfig,
     toggleAutoResume,
-    toggleTrackers,
     toggleAutoStopSeeding,
     toggleSurfsharkRequirement,
     quitAll,
@@ -431,10 +423,6 @@ export function App({
       }
       if (input === "a") {
         toggleAutoResume();
-        return;
-      }
-      if (input === "t") {
-        toggleTrackers();
         return;
       }
       if (input === "v") {

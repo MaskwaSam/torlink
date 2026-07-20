@@ -1,13 +1,14 @@
 import { EventEmitter } from "node:events";
-import { TorrentEngine, type AddHandlers } from "./engine";
+import {
+  TorrentEngine,
+  type AddHandlers,
+  type TorrentBackend,
+} from "./engine";
 import {
   saveQueue,
   saveQueueSync,
   saveSeeds,
   saveSeedsSync,
-  saveTorrentMeta,
-  torrentMetaPath,
-  torrentMetaExists,
   deleteTorrentMeta,
   type SeedRecord,
 } from "./persist";
@@ -20,8 +21,8 @@ import type { SourceId } from "../sources/types";
  * A real seed never pulls data off the network: verifying on-disk files reads
  * the disk (network speed stays 0), only fetching *missing* data raises it. So
  * sustained network download on a "seed" means its files are gone or partial.
- * Size-agnostic (a 50 GB verify never trips it) and cross-platform (webtorrent
- * owns the real on-disk paths, so we never guess sanitized filenames).
+ * Size-agnostic (a 50 GB verify never trips it) and cross-platform: we never
+ * guess the on-disk path from a torrent name.
  */
 export function strayDownload(s: { total: number; progress: number; speed: number }): boolean {
   return s.total > 0 && s.progress < 1 && s.speed > 0;
@@ -29,13 +30,11 @@ export function strayDownload(s: { total: number; progress: number; speed: numbe
 
 const STRAY_TICKS = 2; // consecutive stray polls before flagging missing (~1s)
 
-// How long (ms) to let webtorrent verify on-disk pieces before the stray-download
-// detector starts watching. Verification reads the disk and can briefly report
-// downloadSpeed > 0 / progress < 1, which is indistinguishable from a truly
-// missing file. 10 s covers most single-torrent verifications comfortably.
+// How long (ms) to let Transmission verify on-disk pieces before the
+// stray-download detector starts watching.
 const SEED_GRACE_MS = 10_000;
 
-const POLL_MS = 500;
+const POLL_MS = 3_000;
 const HISTORY_MAX = 500;
 
 export interface AddInput {
@@ -48,61 +47,26 @@ export interface AddInput {
 
 export class DownloadQueue extends EventEmitter {
   private items = new Map<string, QueueItem>();
-  private engine = new TorrentEngine();
   private poll: ReturnType<typeof setInterval> | null = null;
   private history: HistoryItem[] = [];
   private seeds = new Map<string, SeedItem>();
   private strayHits = new Map<string, number>();
   private seedStartedAt = new Map<string, number>();
-  private trackers: string[] = [];
   private networkAllowed = true;
-  private trackerDiscoveryEnabled = true;
   private autoResumeTorrents = true;
   private autoStopSeeding = false;
   private networkPausedDownloads = new Set<string>();
   private networkPausedSeeds = new Set<string>();
 
-  // Extra announce URLs are retained for compatibility and used only when
-  // tracker discovery is enabled.
-  setTrackers(trackers: string[]): void {
-    this.trackers = trackers;
+  constructor(private readonly engine: TorrentBackend = new TorrentEngine()) {
+    super();
   }
 
-  setTrackerDiscoveryEnabled(enabled: boolean): void {
-    if (this.trackerDiscoveryEnabled === enabled) return;
-    this.trackerDiscoveryEnabled = enabled;
-    this.engine.setTrackerDiscoveryEnabled(enabled);
-    this.restartActiveEngine();
-  }
+  // Kept as no-ops so older config plumbing can be read without changing
+  // persisted settings; Transmission owns tracker handling internally.
+  setTrackers(_trackers: string[]): void {}
 
-  private restartActiveEngine(): void {
-    const downloads = [...this.items.values()].filter((it) => it.status === "downloading");
-    const seeds = [...this.seeds.values()].filter((sd) => sd.status === "seeding");
-    if (downloads.length === 0 && seeds.length === 0) return;
-
-    for (const it of downloads) {
-      this.engine.remove(it.id);
-      it.speed = 0;
-      it.peers = 0;
-      it.eta = undefined;
-      this.startEngine(it);
-    }
-
-    for (const sd of seeds) {
-      this.engine.remove(sd.id);
-      this.strayHits.set(sd.id, 0);
-      this.seedStartedAt.set(sd.id, Date.now());
-      sd.uploadSpeed = 0;
-      sd.peers = 0;
-      const source = torrentMetaExists(sd.id) ? torrentMetaPath(sd.id) : sd.magnet;
-      this.engine.add(sd.id, source, sd.dir, this.engineHandlers(sd.id), this.trackers);
-    }
-
-    this.ensurePoll();
-    this.changed();
-    if (downloads.length > 0) void this.persist();
-    if (seeds.length > 0) void this.persistSeeds();
-  }
+  setTrackerDiscoveryEnabled(_enabled: boolean): void {}
 
   setNetworkAllowed(allowed: boolean): void {
     if (this.networkAllowed === allowed) return;
@@ -127,7 +91,7 @@ export class DownloadQueue extends EventEmitter {
     let changed = false;
     for (const sd of this.seeds.values()) {
       if (sd.status !== "seeding") continue;
-      this.engine.remove(sd.id);
+      this.engine.pause(sd.id);
       this.strayHits.delete(sd.id);
       this.seedStartedAt.delete(sd.id);
       this.networkPausedSeeds.delete(sd.id);
@@ -149,7 +113,7 @@ export class DownloadQueue extends EventEmitter {
 
     for (const it of this.items.values()) {
       if (it.status !== "downloading") continue;
-      this.engine.remove(it.id);
+      this.engine.pause(it.id);
       it.status = "paused";
       it.pauseReason = "network";
       it.speed = 0;
@@ -161,7 +125,7 @@ export class DownloadQueue extends EventEmitter {
 
     for (const sd of this.seeds.values()) {
       if (sd.status !== "seeding") continue;
-      this.engine.remove(sd.id);
+      this.engine.pause(sd.id);
       this.strayHits.delete(sd.id);
       this.seedStartedAt.delete(sd.id);
       sd.status = "paused";
@@ -228,6 +192,7 @@ export class DownloadQueue extends EventEmitter {
     const item: QueueItem = existing
       ? {
           ...existing,
+          backend: "transmission",
           status: this.networkAllowed ? "downloading" : "paused",
           error: undefined,
           speed: 0,
@@ -235,6 +200,7 @@ export class DownloadQueue extends EventEmitter {
         }
       : {
           id: safeInput.id,
+          backend: "transmission",
           name: safeInput.name,
           source: safeInput.source,
           magnet: safeInput.magnet,
@@ -260,7 +226,7 @@ export class DownloadQueue extends EventEmitter {
   }
 
   private startEngine(item: QueueItem): void {
-    this.engine.add(item.id, item.magnet, item.dir, this.engineHandlers(item.id), this.trackers);
+    this.engine.add(item.id, item.magnet, item.dir, this.engineHandlers(item.id));
   }
 
   // One torrent serves an item across its whole life (download -> seed ->
@@ -270,10 +236,6 @@ export class DownloadQueue extends EventEmitter {
   private engineHandlers(id: string): AddHandlers {
     return {
       onMetadata: (meta) => {
-        // Capture the .torrent metadata as soon as it arrives so a later re-seed
-        // can verify the on-disk file locally (a bare magnet would have to
-        // re-fetch this from the swarm, which fails for rare/dead torrents).
-        if (meta.torrentFile) void saveTorrentMeta(id, meta.torrentFile);
         const it = this.items.get(id);
         if (!it) return; // the rest only matters while still downloading
         if (meta.name) it.name = meta.name;
@@ -305,6 +267,7 @@ export class DownloadQueue extends EventEmitter {
           it.error = msg;
           it.speed = 0;
           it.peers = 0;
+          this.emit("notice", msg);
           this.changed();
           void this.persist();
           this.maybeStopPoll();
@@ -316,6 +279,7 @@ export class DownloadQueue extends EventEmitter {
           sd.uploadSpeed = 0;
           sd.peers = 0;
           this.seedStartedAt.delete(id);
+          this.emit("notice", msg);
           this.changed();
           void this.persistSeeds();
           this.maybeStopPoll();
@@ -351,6 +315,7 @@ export class DownloadQueue extends EventEmitter {
     if (!it.magnet) return;
     this.seeds.set(it.id, {
       id: it.id,
+      backend: "transmission",
       name: it.name,
       source: it.source,
       magnet: it.magnet,
@@ -367,11 +332,20 @@ export class DownloadQueue extends EventEmitter {
     void this.persistSeeds();
   }
 
-  private tick(): void {
+  private async tick(): Promise<void> {
     let any = false;
+    const completed: QueueItem[] = [];
     for (const it of this.items.values()) {
       if (it.status !== "downloading") continue;
-      const s = this.engine.stats(it.id);
+      const s = await this.engine.stats(it.id).catch((e) => {
+        it.status = "failed";
+        it.error = e instanceof Error ? e.message : String(e);
+        it.speed = 0;
+        it.peers = 0;
+        this.emit("notice", it.error);
+        void this.persist();
+        return null;
+      });
       if (!s) continue;
       it.progress = Math.min(100, Math.round(s.progress * 100));
       it.downloadedBytes = s.downloaded;
@@ -383,18 +357,28 @@ export class DownloadQueue extends EventEmitter {
           ? s.timeRemaining / 1000
           : undefined;
       if (s.name) it.name = s.name;
+      if (s.total > 0 && s.progress >= 1) completed.push(it);
       any = true;
     }
+    for (const it of completed) this.complete(it);
     const now = Date.now();
     for (const sd of this.seeds.values()) {
       if (sd.status !== "seeding") continue;
-      const s = this.engine.stats(sd.id);
+      const s = await this.engine.stats(sd.id).catch((e) => {
+        sd.status = "missing";
+        sd.uploadSpeed = 0;
+        sd.peers = 0;
+        this.seedStartedAt.delete(sd.id);
+        this.emit("notice", e instanceof Error ? e.message : String(e));
+        void this.persistSeeds();
+        return null;
+      });
       if (!s) continue;
       // Safety-net: a seed that's pulling data has lost its files on disk. Give
       // it a couple of ticks (ignore a one-piece repair blip), then stop it and
       // flag missing, never re-download the whole thing.
       //
-      // Skip seeds still inside the grace period: webtorrent needs time to
+      // Skip seeds still inside the grace period: Transmission needs time to
       // hash-verify on-disk pieces, and during that window progress < 1 with
       // downloadSpeed > 0 is perfectly normal.
       const age = now - (this.seedStartedAt.get(sd.id) ?? 0);
@@ -402,7 +386,7 @@ export class DownloadQueue extends EventEmitter {
         const hits = (this.strayHits.get(sd.id) ?? 0) + 1;
         this.strayHits.set(sd.id, hits);
         if (hits >= STRAY_TICKS) {
-          this.engine.remove(sd.id);
+          this.engine.pause(sd.id);
           this.strayHits.delete(sd.id);
           this.seedStartedAt.delete(sd.id);
           sd.status = "missing";
@@ -424,7 +408,7 @@ export class DownloadQueue extends EventEmitter {
 
   private ensurePoll(): void {
     if (this.poll) return;
-    this.poll = setInterval(() => this.tick(), POLL_MS);
+    this.poll = setInterval(() => void this.tick(), POLL_MS);
     this.poll.unref();
   }
 
@@ -444,7 +428,7 @@ export class DownloadQueue extends EventEmitter {
     it.peers = 0;
     it.eta = undefined;
     this.networkPausedDownloads.delete(id);
-    this.engine.remove(id);
+    this.engine.pause(id);
     this.changed();
     void this.persist();
     this.maybeStopPoll();
@@ -501,6 +485,13 @@ export class DownloadQueue extends EventEmitter {
     }
   }
 
+  verify(id: string): void {
+    const known = this.items.has(id) || this.seeds.has(id);
+    if (!known) return;
+    this.engine.verify(id);
+    this.emit("notice", "Transmission verify/rescan started.");
+  }
+
   getSeed(id: string): SeedItem | undefined {
     return this.seeds.get(id);
   }
@@ -531,6 +522,7 @@ export class DownloadQueue extends EventEmitter {
 
     const base: SeedItem = {
       id: safeHistory.id,
+      backend: "transmission",
       name: safeHistory.name,
       source: safeHistory.source,
       magnet: safeHistory.magnet,
@@ -544,8 +536,8 @@ export class DownloadQueue extends EventEmitter {
     };
 
     // Only hard guard we can make synchronously and portably: no magnet, no seed.
-    // We do NOT guess the on-disk path (webtorrent sanitizes names per-OS); we
-    // let it verify the real files and the poll safety-net flags a missing one.
+    // We do NOT guess the on-disk path; we let Transmission verify the real
+    // files and the poll safety-net flags a missing one.
     if (!safeHistory.magnet) {
       this.seeds.set(id, { ...base, status: "missing" });
       this.changed();
@@ -557,10 +549,7 @@ export class DownloadQueue extends EventEmitter {
     this.networkPausedSeeds.delete(id);
     this.strayHits.set(id, 0);
     this.seedStartedAt.set(id, Date.now());
-    // Seed from the stored .torrent metadata when we have it (verifies the local
-    // file immediately, no swarm needed); fall back to the magnet otherwise.
-    const source = torrentMetaExists(id) ? torrentMetaPath(id) : safeHistory.magnet;
-    this.engine.add(id, source, safeHistory.dir, this.engineHandlers(id), this.trackers);
+    this.engine.add(id, safeHistory.magnet, safeHistory.dir, this.engineHandlers(id));
     this.ensurePoll();
     this.changed();
     void this.persistSeeds();
@@ -670,6 +659,17 @@ export class DownloadQueue extends EventEmitter {
 
   restore(items: QueueItem[]): void {
     for (const raw of items) {
+      if (raw.backend !== "transmission") {
+        this.items.set(raw.id, {
+          ...raw,
+          status: "paused",
+          speed: 0,
+          peers: 0,
+          eta: undefined,
+          pauseReason: undefined,
+        });
+        continue;
+      }
       const shouldAutoResumeNetworkPause =
         raw.status === "paused" &&
         raw.pauseReason === "network" &&

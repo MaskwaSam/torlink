@@ -68,9 +68,8 @@ export function isInfoHash(input: string): boolean {
 }
 
 // Accepts either a magnet URI or a bare info hash. A bare hash is normalized and
-// wrapped as a trackerless magnet. The torrent engine can still use tracker
-// discovery from full magnet links when that setting is enabled. Returns null
-// for anything that is neither.
+// wrapped as a trackerless magnet. Transmission can still use trackers already
+// present in full magnet links. Returns null for anything that is neither.
 export function parseInput(input: string): ParsedMagnet | null {
   const s = input.trim();
   const magnet = parseMagnet(s);
