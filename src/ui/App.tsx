@@ -104,6 +104,7 @@ export function App({
       const cfg = await loadConfig();
       const q = new DownloadQueue();
       q.setTrackers(cfg.trackers);
+      q.setTrackerDiscoveryEnabled(cfg.enableTrackers);
       q.setAutoResumeTorrents(cfg.autoResumeTorrents);
       q.setAutoStopSeeding(cfg.autoStopSeeding);
       q.setNetworkAllowed(!cfg.requireSurfsharkVpn || vpn.ok);
@@ -181,6 +182,7 @@ export function App({
     (c: Config) => {
       setConfigState(c);
       queue?.setTrackers(c.trackers);
+      queue?.setTrackerDiscoveryEnabled(c.enableTrackers);
       queue?.setAutoResumeTorrents(c.autoResumeTorrents);
       queue?.setAutoStopSeeding(c.autoStopSeeding);
       queue?.setNetworkAllowed(!c.requireSurfsharkVpn || vpn.ok);
@@ -194,6 +196,13 @@ export function App({
     const autoResumeTorrents = !config.autoResumeTorrents;
     setConfig({ ...config, autoResumeTorrents });
     setNotice(`Torrent auto-resume ${autoResumeTorrents ? "on" : "off"}.`);
+  }, [config, setConfig]);
+
+  const toggleTrackers = useCallback(() => {
+    if (!config) return;
+    const enableTrackers = !config.enableTrackers;
+    setConfig({ ...config, enableTrackers });
+    setNotice(`Tracker discovery ${enableTrackers ? "on" : "off"}.`);
   }, [config, setConfig]);
 
   const toggleSurfsharkRequirement = useCallback(() => {
@@ -389,6 +398,7 @@ export function App({
     rows,
     setConfig,
     toggleAutoResume,
+    toggleTrackers,
     toggleAutoStopSeeding,
     toggleSurfsharkRequirement,
     quitAll,
@@ -421,6 +431,10 @@ export function App({
       }
       if (input === "a") {
         toggleAutoResume();
+        return;
+      }
+      if (input === "t") {
+        toggleTrackers();
         return;
       }
       if (input === "v") {

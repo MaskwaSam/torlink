@@ -82,6 +82,7 @@ function makeStore(
     config: {
       downloadDir: "~/Downloads/torlink",
       trackers: [],
+      enableTrackers: true,
       autoResumeTorrents: true,
       requireSurfsharkVpn: true,
       autoStopSeeding: false,

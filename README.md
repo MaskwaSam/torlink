@@ -28,7 +28,7 @@ Type what you're looking for and press Enter. Results stream in from every sourc
 
 ## Your downloads
 
-Active downloads sit up top with their progress, speed, and time left; when one finishes it drops into Recently downloaded just below, so the list stays tidy. Everything's still there when you come back, and anything interrupted picks up where it left off. Press `a` to toggle torrent auto-resume if you want unfinished downloads and active seeds to stay paused after a restart or VPN reconnect. Press `e` to toggle auto-stop seeding if you want finished downloads to stop instead of seeding automatically. Press `v` to toggle the Surfshark VPN requirement.
+Active downloads sit up top with their progress, speed, and time left; when one finishes it drops into Recently downloaded just below, so the list stays tidy. Everything's still there when you come back, and anything interrupted picks up where it left off. Highlight a row and press `delete` to remove it from the Downloads page. Press `a` to toggle torrent auto-resume if you want unfinished downloads and active seeds to stay paused after a restart or VPN reconnect. Press `t` to toggle tracker discovery; it is on by default because many magnets need trackers to find peers. Press `e` to toggle auto-stop seeding if you want finished downloads to stop instead of seeding automatically. Press `v` to toggle the Surfshark VPN requirement.
 
 Downloads run in the background while you keep searching, so you can queue up as many as you want. They save to your downloads folder, and the Downloads pane keeps tabs on each one. When something finishes it keeps seeding automatically so the next person can find it too, and the Seeding tab lets you pause or stop that anytime.
 

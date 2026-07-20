@@ -68,6 +68,7 @@ export function Downloads() {
 
   useInput(
     (input, key) => {
+      const deleteCommand = input === "c" || key.backspace || key.delete;
       if (key.upArrow || input === "k") setCursor(wrapStep(clamped, -1, total));
       else if (key.downArrow || input === "j") setCursor(wrapStep(clamped, 1, total));
       else if (input === "f") {
@@ -78,7 +79,7 @@ export function Downloads() {
       else if (inActive) {
         const it = active[clamped];
         if (!it) return;
-        if (input === "c") queue.cancel(it.id);
+        if (deleteCommand) queue.cancel(it.id);
         else if (input === "p") {
           if (it.status === "paused" && !networkAllowed) setNotice(vpn.reason);
           else queue.togglePause(it.id);
@@ -94,7 +95,7 @@ export function Downloads() {
             source: h.source,
             sizeBytes: h.sizeBytes,
           });
-        else if (input === "c") queue.removeHistory(h.id);
+        else if (deleteCommand) queue.removeHistory(h.id);
       }
     },
     { isActive: focused && total > 0 },

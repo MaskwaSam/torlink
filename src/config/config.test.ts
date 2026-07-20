@@ -22,9 +22,10 @@ afterEach(async () => {
 });
 
 describe("loadConfig", () => {
-  it("defaults torrent auto-resume on and auto-stop seeding off", async () => {
+  it("defaults tracker discovery on, torrent auto-resume on, and auto-stop seeding off", async () => {
     const { config } = await loadWithStateDir();
     expect(await config.loadConfig()).toMatchObject({
+      enableTrackers: true,
       autoResumeTorrents: true,
       requireSurfsharkVpn: true,
       autoStopSeeding: false,
@@ -40,6 +41,7 @@ describe("loadConfig", () => {
       JSON.stringify({
         downloadDir: "/tmp/downloads",
         trackers: [],
+        enableTrackers: false,
         autoResumeTorrents: false,
         requireSurfsharkVpn: false,
         autoStopSeeding: true,
@@ -48,6 +50,7 @@ describe("loadConfig", () => {
       "utf8",
     );
     expect(await config.loadConfig()).toMatchObject({
+      enableTrackers: false,
       autoResumeTorrents: false,
       requireSurfsharkVpn: false,
       autoStopSeeding: true,

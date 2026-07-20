@@ -11,6 +11,7 @@ function makeStore(overrides: Partial<Store> = {}): Store {
     config: {
       downloadDir: "/downloads",
       trackers: [],
+      enableTrackers: true,
       autoResumeTorrents: true,
       requireSurfsharkVpn: true,
       autoStopSeeding: false,

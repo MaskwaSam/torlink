@@ -6,6 +6,7 @@ import { SOURCE_IDS, type SourceId } from "../sources/types";
 export interface Config {
   downloadDir: string;
   trackers: string[];
+  enableTrackers: boolean;
   autoResumeTorrents: boolean;
   requireSurfsharkVpn: boolean;
   autoStopSeeding: boolean;
@@ -15,6 +16,7 @@ export interface Config {
 export const defaultConfig: Config = {
   downloadDir: defaultDownloadDir,
   trackers: [],
+  enableTrackers: true,
   autoResumeTorrents: true,
   requireSurfsharkVpn: true,
   autoStopSeeding: false,
@@ -62,6 +64,10 @@ export async function loadConfig(): Promise<Config> {
       trackers: Array.isArray(parsed.trackers)
         ? parsed.trackers.filter((t): t is string => typeof t === "string" && t.length > 0)
         : [],
+      enableTrackers:
+        typeof parsed.enableTrackers === "boolean"
+          ? parsed.enableTrackers
+          : defaultConfig.enableTrackers,
       autoResumeTorrents:
         typeof parsed.autoResumeTorrents === "boolean"
           ? parsed.autoResumeTorrents

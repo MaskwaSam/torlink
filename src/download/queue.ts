@@ -56,15 +56,52 @@ export class DownloadQueue extends EventEmitter {
   private seedStartedAt = new Map<string, number>();
   private trackers: string[] = [];
   private networkAllowed = true;
+  private trackerDiscoveryEnabled = true;
   private autoResumeTorrents = true;
   private autoStopSeeding = false;
   private networkPausedDownloads = new Set<string>();
   private networkPausedSeeds = new Set<string>();
 
-  // Retained user config for compatibility. TorrentEngine currently disables
-  // tracker discovery, so these are not contacted by TorLink.
+  // Extra announce URLs are retained for compatibility and used only when
+  // tracker discovery is enabled.
   setTrackers(trackers: string[]): void {
     this.trackers = trackers;
+  }
+
+  setTrackerDiscoveryEnabled(enabled: boolean): void {
+    if (this.trackerDiscoveryEnabled === enabled) return;
+    this.trackerDiscoveryEnabled = enabled;
+    this.engine.setTrackerDiscoveryEnabled(enabled);
+    this.restartActiveEngine();
+  }
+
+  private restartActiveEngine(): void {
+    const downloads = [...this.items.values()].filter((it) => it.status === "downloading");
+    const seeds = [...this.seeds.values()].filter((sd) => sd.status === "seeding");
+    if (downloads.length === 0 && seeds.length === 0) return;
+
+    for (const it of downloads) {
+      this.engine.remove(it.id);
+      it.speed = 0;
+      it.peers = 0;
+      it.eta = undefined;
+      this.startEngine(it);
+    }
+
+    for (const sd of seeds) {
+      this.engine.remove(sd.id);
+      this.strayHits.set(sd.id, 0);
+      this.seedStartedAt.set(sd.id, Date.now());
+      sd.uploadSpeed = 0;
+      sd.peers = 0;
+      const source = torrentMetaExists(sd.id) ? torrentMetaPath(sd.id) : sd.magnet;
+      this.engine.add(sd.id, source, sd.dir, this.engineHandlers(sd.id), this.trackers);
+    }
+
+    this.ensurePoll();
+    this.changed();
+    if (downloads.length > 0) void this.persist();
+    if (seeds.length > 0) void this.persistSeeds();
   }
 
   setNetworkAllowed(allowed: boolean): void {

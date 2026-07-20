@@ -32,26 +32,48 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export const WEBTORRENT_OPTIONS = {
-  tracker: false,
+export const BASE_WEBTORRENT_OPTIONS = {
   lsd: false,
   utPex: false,
   natUpnp: false,
   natPmp: false,
 } as const;
 
-export class TorrentEngine {
-  private client: WebTorrent | null = null;
-  private torrents = new Map<string, Torrent>();
+export function webTorrentOptions(tracker: boolean) {
+  return { ...BASE_WEBTORRENT_OPTIONS, tracker };
+}
 
-  private ensureClient(): WebTorrent {
-    if (!this.client) {
-      // Keep peer discovery on DHT/manual peers only. The tracker client stack
-      // currently carries a high-severity transitive advisory via `ip`.
-      this.client = new WebTorrent(WEBTORRENT_OPTIONS);
-      this.client.on("error", () => {});
+export class TorrentEngine {
+  private clients = new Map<boolean, WebTorrent>();
+  private torrents = new Map<string, { torrent: Torrent; tracker: boolean }>();
+  private trackerDiscovery = true;
+
+  setTrackerDiscoveryEnabled(enabled: boolean): void {
+    this.trackerDiscovery = enabled;
+  }
+
+  private ensureClient(tracker: boolean): WebTorrent {
+    let client = this.clients.get(tracker);
+    if (!client) {
+      client = new WebTorrent(webTorrentOptions(tracker));
+      client.on("error", () => {});
+      this.clients.set(tracker, client);
     }
-    return this.client;
+    return client;
+  }
+
+  private destroyIdleClient(tracker: boolean): void {
+    for (const record of this.torrents.values()) {
+      if (record.tracker === tracker) return;
+    }
+    const client = this.clients.get(tracker);
+    if (!client) return;
+    this.clients.delete(tracker);
+    setImmediate(() => {
+      try {
+        client.destroy();
+      } catch {}
+    });
   }
 
   // `source` is a magnet URI, an infoHash, or a path to a .torrent file. Seeding
@@ -66,14 +88,16 @@ export class TorrentEngine {
     handlers: AddHandlers,
     announce?: string[],
   ): void {
-    const client = this.ensureClient();
+    const tracker = this.trackerDiscovery;
     const existing = this.torrents.get(id);
     if (existing) {
       this.torrents.delete(id);
       try {
-        existing.destroy();
+        existing.torrent.destroy();
       } catch {}
+      this.destroyIdleClient(existing.tracker);
     }
+    const client = this.ensureClient(tracker);
 
     const opts = announce && announce.length > 0 ? { path: dir, announce } : { path: dir };
     let torrent: Torrent;
@@ -83,7 +107,7 @@ export class TorrentEngine {
       handlers.onError?.(message(e));
       return;
     }
-    this.torrents.set(id, torrent);
+    this.torrents.set(id, { torrent, tracker });
 
     torrent.on("metadata", () => {
       handlers.onMetadata?.({
@@ -104,17 +128,22 @@ export class TorrentEngine {
       try {
         torrent.destroy();
       } catch {}
+      this.destroyIdleClient(tracker);
     });
   }
 
   // The TCP port the client accepts incoming peers on (diagnostics / tests).
   listenPort(): number | null {
-    return this.client?.torrentPort ?? null;
+    for (const client of this.clients.values()) {
+      if (client.torrentPort) return client.torrentPort;
+    }
+    return null;
   }
 
   stats(id: string): TorrentProgress | null {
-    const t = this.torrents.get(id);
-    if (!t) return null;
+    const record = this.torrents.get(id);
+    if (!record) return null;
+    const t = record.torrent;
     return {
       progress: t.progress,
       downloaded: t.downloaded,
@@ -129,12 +158,13 @@ export class TorrentEngine {
   }
 
   remove(id: string): void {
-    const t = this.torrents.get(id);
+    const record = this.torrents.get(id);
     this.torrents.delete(id);
-    if (t) {
+    if (record) {
       try {
-        t.destroy();
+        record.torrent.destroy();
       } catch {}
+      this.destroyIdleClient(record.tracker);
     }
   }
 
@@ -142,9 +172,9 @@ export class TorrentEngine {
     this.torrents.clear();
     // Never block shutdown on webtorrent's async teardown: hand off the client
     // destroy to a later tick and let the OS reclaim sockets if we exit first.
-    const client = this.client;
-    this.client = null;
-    if (client) {
+    const clients = [...this.clients.values()];
+    this.clients.clear();
+    for (const client of clients) {
       setImmediate(() => {
         try {
           client.destroy();

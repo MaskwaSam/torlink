@@ -20,6 +20,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       { keys: "esc", label: "Back" },
       { keys: "o", label: "Download folder" },
       { keys: "v", label: "Toggle Surfshark requirement" },
+      { keys: "t", label: "Toggle tracker discovery" },
       { keys: "q", label: "Quit" },
     ],
   },
@@ -39,7 +40,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       { keys: "p", label: "Pause/resume" },
       { keys: "a", label: "Toggle auto-resume" },
       { keys: "e", label: "Toggle auto-stop seeding" },
-      { keys: "c", label: "Cancel or remove from list" },
+      { keys: "del, c", label: "Delete/cancel highlighted item" },
       { keys: "f", label: "Retry failed" },
       { keys: "d", label: "Download again" },
       { keys: "x", label: "Clear recent" },
@@ -101,22 +102,22 @@ export function footerHints(
   }
   if (section === "downloads") {
     if (downloadFocus === "paused") {
-      return [{ keys: "p", label: "Resume" }, { keys: "c", label: "Cancel" }, SWITCH, ALWAYS];
+      return [{ keys: "p", label: "Resume" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
     }
     if (downloadFocus === "failed") {
-      return [{ keys: "f", label: "Retry" }, { keys: "c", label: "Remove" }, SWITCH, ALWAYS];
+      return [{ keys: "f", label: "Retry" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
     }
     if (downloadFocus === "recent") {
       return [
         NAVIGATE,
         { keys: "d", label: "Download again" },
-        { keys: "c", label: "Remove" },
+        { keys: "del", label: "Delete" },
         { keys: "x", label: "Clear" },
         SWITCH,
         ALWAYS,
       ];
     }
-    return [{ keys: "p", label: "Pause" }, { keys: "c", label: "Cancel" }, SWITCH, ALWAYS];
+    return [{ keys: "p", label: "Pause" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
   }
   return [
     NAVIGATE,
