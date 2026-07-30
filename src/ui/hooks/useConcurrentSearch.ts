@@ -26,6 +26,7 @@ export interface ConcurrentSearchState {
 }
 
 const PER_SOURCE_TIMEOUT_MS = 25000;
+const RESULT_FLUSH_MS = 150;
 
 function blankPerSource(active: readonly Source[], loading: boolean): Record<SourceId, SourceState> {
   const out = {} as Record<SourceId, SourceState>;
@@ -82,6 +83,33 @@ export function useConcurrentSearch(
     const collected: TorrentResult[] = [];
     const per = blankPerSource(sources, true);
     let done = 0;
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = (): void => {
+      setState({
+        results: defaultOrder(dedupe(collected.slice())),
+        perSource: { ...per },
+        loading: done < sources.length,
+        done,
+        total: sources.length,
+      });
+    };
+
+    const scheduleFlush = (): void => {
+      if (done >= sources.length) {
+        if (flushTimer) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        flush();
+        return;
+      }
+      if (flushTimer) return;
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        if (alive) flush();
+      }, RESULT_FLUSH_MS);
+    };
 
     setState({
       results: [],
@@ -118,19 +146,14 @@ export function useConcurrentSearch(
           ctrl.signal.removeEventListener("abort", onAbort);
           if (!alive) return;
           done += 1;
-          setState({
-            results: defaultOrder(dedupe(collected.slice())),
-            perSource: { ...per },
-            loading: done < sources.length,
-            done,
-            total: sources.length,
-          });
+          scheduleFlush();
         });
     }
 
     return () => {
       alive = false;
       ctrl.abort();
+      if (flushTimer) clearTimeout(flushTimer);
     };
   }, [query, enabled, sources]);
 

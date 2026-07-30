@@ -1,7 +1,8 @@
 import { promises as fs } from "node:fs";
 import { configFile, defaultDownloadDir } from "./paths";
 import { serializeWrites, writeJsonAtomic } from "../util/atomic";
-import { SOURCE_IDS, type SourceId } from "../sources/types";
+import { ACTIVE_SOURCE_IDS } from "../sources/registry";
+import type { SourceId } from "../sources/types";
 
 export interface Config {
   downloadDir: string;
@@ -23,7 +24,7 @@ export const defaultConfig: Config = {
   disabledSources: [],
 };
 
-const SOURCE_ID_SET = new Set<string>(SOURCE_IDS);
+const ACTIVE_SOURCE_ID_SET = new Set<string>(ACTIVE_SOURCE_IDS);
 
 function configCopy(config: Config = defaultConfig): Config {
   return {
@@ -40,11 +41,11 @@ function cleanDisabledSources(
   if (!Array.isArray(value)) return [...fallback];
   const seen = new Set<SourceId>();
   for (const raw of value) {
-    if (typeof raw !== "string" || !SOURCE_ID_SET.has(raw)) continue;
+    if (typeof raw !== "string" || !ACTIVE_SOURCE_ID_SET.has(raw)) continue;
     seen.add(raw as SourceId);
   }
-  if (seen.size >= SOURCE_IDS.length) return [...fallback];
-  return SOURCE_IDS.filter((id) => seen.has(id));
+  if (seen.size >= ACTIVE_SOURCE_IDS.length) return [...fallback];
+  return ACTIVE_SOURCE_IDS.filter((id) => seen.has(id));
 }
 
 export async function loadConfig(): Promise<Config> {

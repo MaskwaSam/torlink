@@ -111,6 +111,7 @@ export function App({
       q.restore(reconcileQueue(await loadQueue()));
       q.restoreHistory(await loadHistory());
       q.restoreSeeds(await loadSeeds());
+      q.reconcileBackend(cfg.downloadDir);
       if (!alive) {
         q.suspend();
         return;

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -150,6 +150,8 @@ describe("ManagedTransmissionDaemon", () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse(409, {}, "sid-1"))
+      .mockResolvedValueOnce(jsonResponse(200, { result: "success", arguments: {} }))
+      .mockResolvedValueOnce(jsonResponse(409, {}, "sid-2"))
       .mockResolvedValueOnce(jsonResponse(200, { result: "success", arguments: {} }));
 
     try {
@@ -157,6 +159,7 @@ describe("ManagedTransmissionDaemon", () => {
         binary: "/opt/homebrew/bin/transmission-daemon",
         stateDir: tmp,
         rpcPort: 49123,
+        peerPort: 51414,
         fetchImpl,
         spawnImpl: spawnImpl as never,
       });
@@ -171,8 +174,89 @@ describe("ManagedTransmissionDaemon", () => {
       expect(args).toContain("--no-auth");
       expect(args).toContain("--allowed");
       expect(args).toContain("--no-portmap");
+      expect(args).toContain("--peerport");
+      expect(args).toContain("51414");
+      const rpcCalls = fetchImpl.mock.calls.map((call) => JSON.parse(String(call[1]?.body)));
+      expect(rpcCalls).toMatchObject([
+        { method: "session-get" },
+        { method: "session-get" },
+        {
+          method: "session-set",
+          arguments: {
+            "download-queue-enabled": false,
+            "queue-stalled-enabled": false,
+            "seed-queue-enabled": false,
+            "start-added-torrents": true,
+            start_paused: false,
+          },
+        },
+        {
+          method: "session-set",
+          arguments: {
+            "download-queue-enabled": false,
+            "queue-stalled-enabled": false,
+            "seed-queue-enabled": false,
+            "start-added-torrents": true,
+            start_paused: false,
+          },
+        },
+      ]);
       runner.destroy();
       expect(killed).toContain("SIGTERM");
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reuses an existing TorLink daemon from saved RPC settings instead of spawning another", async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), "torlink-existing-daemon-test-"));
+    const configDir = path.join(tmp, "daemon-config");
+    const spawnImpl = vi.fn();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(409, {}, "sid-1"))
+      .mockResolvedValueOnce(jsonResponse(200, { result: "success", arguments: {} }))
+      .mockResolvedValueOnce(jsonResponse(409, {}, "sid-2"))
+      .mockResolvedValueOnce(jsonResponse(200, { result: "success", arguments: {} }));
+
+    try {
+      await mkdir(configDir, { recursive: true });
+      await writeFile(path.join(configDir, "settings.json"), JSON.stringify({ "rpc-port": 49124 }));
+      const runner = new ManagedTransmissionDaemon({
+        binary: "/opt/homebrew/bin/transmission-daemon",
+        stateDir: tmp,
+        fetchImpl,
+        spawnImpl: spawnImpl as never,
+      });
+
+      const endpoint = await runner.start(path.join(tmp, "downloads"));
+
+      expect(endpoint.url).toBe("http://127.0.0.1:49124/transmission/rpc");
+      expect(spawnImpl).not.toHaveBeenCalled();
+      expect(fetchImpl.mock.calls.map((call) => JSON.parse(String(call[1]?.body)))).toMatchObject([
+        { method: "session-get" },
+        { method: "session-get" },
+        {
+          method: "session-set",
+          arguments: {
+            "download-queue-enabled": false,
+            "queue-stalled-enabled": false,
+            "seed-queue-enabled": false,
+            "start-added-torrents": true,
+            start_paused: false,
+          },
+        },
+        {
+          method: "session-set",
+          arguments: {
+            "download-queue-enabled": false,
+            "queue-stalled-enabled": false,
+            "seed-queue-enabled": false,
+            "start-added-torrents": true,
+            start_paused: false,
+          },
+        },
+      ]);
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }

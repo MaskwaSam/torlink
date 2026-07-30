@@ -32,7 +32,7 @@ That's the only thing you'll type. torlink opens straight to a search bar: searc
 
 ## Finding something
 
-Type what you're looking for and press Enter. Results stream in from every source as they answer, tagged with size and how many people are sharing each one, so you can see what'll come down fast. Arrow to what you want and press `d` to save it.
+Type what you're looking for and press Enter. Results stream in from every source as they answer, tagged with size and how many people are sharing each one, so you can see what'll come down fast. Arrow to what you want and press `s` to inspect details and torrent options, or press `d` to save it.
 
 <p align="center">
   <img src="preview/browse.svg" alt="torlink's browse view: the sidebar, the search bar, and merged results from every source" style="max-width: 832px; width: 100%; height: auto;">
@@ -44,7 +44,7 @@ Active downloads sit up top with their progress, speed, peers, and time left; wh
 
 Downloads run in the background while you keep searching, so you can queue up as many as you want. TorLink starts its own localhost-only `transmission-daemon` when needed and stops that managed daemon when TorLink exits. They save to your downloads folder, and the Downloads pane keeps tabs on each one. When something finishes it keeps seeding automatically so the next person can find it too, and the Seeding tab lets you pause or stop that anytime.
 
-The Sources pane lets you turn individual providers on or off, including FitGirl, YTS, TPB Movies, TPB Books, TPB Music, 1337x Movies, 1337x Books, and 1337x Music. Disabled sources are skipped during search.
+The Sources pane lets you turn individual providers on or off, including FitGirl, YTS, EZTV, The Pirate Bay, and 1337x providers. Disabled sources are skipped during search.
 
 <p align="center">
   <img src="preview/downloads.svg" alt="torlink's Downloads pane: live progress on top, recently downloaded below" style="max-width: 832px; width: 100%; height: auto;">
@@ -59,12 +59,11 @@ A short, hand-picked list of trusted sources:
 | Games | FitGirl |
 | Movies | YTS, The Pirate Bay, 1337x |
 | TV | EZTV, The Pirate Bay, 1337x |
-| Anime | Nyaa, SubsPlease |
 | Books | The Pirate Bay, 1337x |
 | Audiobooks | The Pirate Bay, 1337x |
 | Music | The Pirate Bay, 1337x |
 
-Games are the only category that can run code, so they come from FitGirl alone, a repacker with a long, trusted track record; everything else is plain video and subtitles. If a source is down, the search carries on without it, and torlink tells you which one is offline.
+Games are the only category that can run code, so they come from FitGirl alone, a repacker with a long, trusted track record; everything else is plain media. If a source is down, the search carries on without it, and torlink tells you which one is offline.
 
 ## Contributing
 

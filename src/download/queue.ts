@@ -221,12 +221,21 @@ export class DownloadQueue extends EventEmitter {
     } else {
       this.networkPausedDownloads.add(item.id);
     }
+    this.reconcileEngine(dir);
     this.changed();
     void this.persist();
   }
 
   private startEngine(item: QueueItem): void {
     this.engine.add(item.id, item.magnet, item.dir, this.engineHandlers(item.id));
+  }
+
+  private trackedTorrentIds(): string[] {
+    return [...new Set([...this.items.keys(), ...this.seeds.keys()])];
+  }
+
+  private reconcileEngine(downloadDir: string): void {
+    this.engine.reconcile?.(this.trackedTorrentIds(), downloadDir);
   }
 
   // One torrent serves an item across its whole life (download -> seed ->
@@ -597,6 +606,10 @@ export class DownloadQueue extends EventEmitter {
         this.restorePaused(h, pauseReason);
       }
     }
+  }
+
+  reconcileBackend(downloadDir: string): void {
+    this.reconcileEngine(downloadDir);
   }
 
   // Rebuild a paused seed from history without touching the engine, so it shows

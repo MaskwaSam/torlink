@@ -5,7 +5,7 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { Box, Text } from "ink";
 import { StoreContext, type Store } from "../src/ui/store";
-import { COLOR, ICON, SOURCE_STYLE } from "../src/ui/theme";
+import { COLOR, ICON, sourceStyle } from "../src/ui/theme";
 import { Logo } from "../src/ui/components/Logo";
 import { Rule } from "../src/ui/components/Rule";
 import { Footer } from "../src/ui/components/Footer";
@@ -36,8 +36,8 @@ const RESULTS: TorrentResult[] = [
   { infoHash: "b2", name: "Oppenheimer (2023) [1080p WEB]", source: "yts", sizeBytes: 2.1e9, seeders: 1240, leechers: 88, magnet: "", added: NOW - 7200 },
   { infoHash: "g7", name: "Dune: Part Two (2024) [2160p BluRay]", source: "yts", sizeBytes: 8.4e9, seeders: 910, leechers: 41, magnet: "", added: NOW - 90000 },
   { infoHash: "c3", name: "Breaking Bad S05E14 1080p WEB-DL", source: "eztv", sizeBytes: 1.6e9, seeders: 540, leechers: 31, magnet: "", added: NOW - 1800 },
-  { infoHash: "e5", name: "[Erai-raws] Jujutsu Kaisen S2 - 23 [1080p]", source: "nyaa", sizeBytes: 1.3e9, seeders: 320, leechers: 12, magnet: "", added: NOW - 900 },
-  { infoHash: "d4", name: "Frieren - 28 [1080p]", source: "subsplease", sizeBytes: 1.4e9, seeders: 0, leechers: 0, magnet: "", added: NOW - 600 },
+  { infoHash: "e5", name: "Project Hail Mary - Andy Weir [EPUB]", source: "tpb-books", sizeBytes: 3.4e6, seeders: 320, leechers: 12, magnet: "", added: NOW - 900 },
+  { infoHash: "d4", name: "Boards of Canada - Music Has the Right to Children [FLAC]", source: "x1337-music", sizeBytes: 410e6, seeders: 180, leechers: 9, magnet: "", added: NOW - 600 },
   { infoHash: "a1", name: "Elden Ring: Shadow of the Erdtree Edition", source: "fitgirl", sizeBytes: 0, seeders: 0, leechers: 0, magnet: "", added: NOW - 3600 },
 ];
 
@@ -210,7 +210,7 @@ save(
               </Box>
               {browseResults.map((r, i) => {
                 const here = i === 0;
-                const ss = SOURCE_STYLE[r.source];
+                const ss = sourceStyle(r.source);
                 return (
                   <Box key={r.infoHash}>
                     <Box width={2} flexShrink={0}>

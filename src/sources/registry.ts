@@ -1,7 +1,5 @@
 import { eztv } from "./eztv";
 import { fitgirl } from "./fitgirl";
-import { nyaa } from "./nyaa";
-import { subsplease } from "./subsplease";
 import { tpbAudiobooks, tpbBooks, tpbMovies, tpbMusic, tpbTv } from "./piratebay";
 import { x1337Audiobooks, x1337Books, x1337Movies, x1337Music, x1337Tv } from "./x1337";
 import { yts } from "./yts";
@@ -15,8 +13,6 @@ export const SOURCES: readonly Source[] = [
   eztv,
   tpbTv,
   x1337Tv,
-  nyaa,
-  subsplease,
   tpbBooks,
   x1337Books,
   tpbAudiobooks,
@@ -26,6 +22,7 @@ export const SOURCES: readonly Source[] = [
 ];
 
 export const DEFAULT_SOURCE: Source = SOURCES[0]!;
+export const ACTIVE_SOURCE_IDS = SOURCES.map((s) => s.id) as readonly SourceId[];
 
 export function getSource(id: SourceId): Source {
   return SOURCES.find((s) => s.id === id) ?? DEFAULT_SOURCE;
@@ -45,7 +42,6 @@ const GROUP_ORDER: readonly SourceGroup[] = [
   "Games",
   "Movies",
   "TV",
-  "Anime",
   "Books",
   "Audiobooks",
   "Music",

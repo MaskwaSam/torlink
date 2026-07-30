@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useInput } from "ink";
 import { useStore, CATEGORIES } from "../store";
 import { Spinner } from "./Spinner";
@@ -7,7 +7,7 @@ import { Panel } from "./Panel";
 import { Rule } from "./Rule";
 import { useConcurrentSearch } from "../hooks/useConcurrentSearch";
 import { activeSources, getSource } from "../../sources/registry";
-import { wrapStep, windowStart, resultsPanelOuter } from "../move";
+import { stickCursor, wrapStep, windowStart, resultsPanelOuter } from "../move";
 import { sortResults, nextSort, sortLabel, sortArrow, type Sort, type SortField } from "../sort";
 import { COLOR, GUTTER, ICON, sourceStyle } from "../theme";
 import {
@@ -37,6 +37,7 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
 
 function Detail({ r, width }: { r: TorrentResult; width: number }) {
   const ss = sourceStyle(r.source);
+  const source = getSource(r.source);
   const date = formatRelative(r.added);
   const health =
     r.seeders || r.leechers ? (
@@ -76,6 +77,15 @@ function Detail({ r, width }: { r: TorrentResult; width: number }) {
           }
         />
         <DetailRow label="Health" value={health} />
+        <DetailRow
+          label="Source"
+          value={
+            <Text>
+              <Text color={ss.color}>{source.label}</Text>
+              <Text dimColor>{` ${source.group}`}</Text>
+            </Text>
+          }
+        />
         {r.numFiles ? (
           <DetailRow label="Files" value={<Text dimColor>{String(r.numFiles)}</Text>} />
         ) : null}
@@ -97,19 +107,22 @@ function Detail({ r, width }: { r: TorrentResult; width: number }) {
           }
         />
       </Box>
-      <Box marginTop={1}>
-        <Text color={COLOR.accent} bold>
-          d
+      <Box marginTop={1} flexDirection="column">
+        <Text bold color={COLOR.text}>
+          Options
         </Text>
-        <Text color={COLOR.text}> Download</Text>
-        <Text dimColor>{`     ${ICON.dot}     `}</Text>
-        <Text color={COLOR.accent} bold>
-          y
-        </Text>
-        <Text color={COLOR.text}> Copy magnet</Text>
-        <Text dimColor>{`     ${ICON.dot}     `}</Text>
-        <Text color={COLOR.alt}>esc</Text>
-        <Text dimColor> back</Text>
+        <DetailRow
+          label="d"
+          value={<Text color={COLOR.text}>Download to the current TorLink folder</Text>}
+        />
+        <DetailRow
+          label="y"
+          value={<Text color={COLOR.text}>Copy the magnet link</Text>}
+        />
+        <DetailRow
+          label="esc"
+          value={<Text dimColor>Back to results</Text>}
+        />
       </Box>
     </Box>
   );
@@ -150,11 +163,17 @@ export function Results() {
   const focused = region === "content";
   const [mode, setMode] = useState<Mode>("list");
   const [cursor, setCursor] = useState(0);
+  const selRef = useRef<string | null>(null);
   const [detail, setDetail] = useState<TorrentResult | null>(null);
 
   useEffect(() => {
-    setCursor(0);
+    setCursor((c) => stickCursor(results, selRef.current, c));
   }, [results]);
+
+  useEffect(() => {
+    selRef.current = null;
+    setCursor(0);
+  }, [query, section]);
 
   useEffect(() => {
     if (!focused) return;
@@ -185,6 +204,16 @@ export function Results() {
   const copyResultMagnet = (r: TorrentResult): void =>
     copyMagnet({ name: r.name, magnet: r.magnet });
 
+  const openTorrentScreen = (r: TorrentResult): void => {
+    setDetail(r);
+    setMode("detail");
+  };
+
+  const moveTo = (n: number): void => {
+    setCursor(n);
+    selRef.current = results[n]?.infoHash ?? null;
+  };
+
   useInput(
     (input, key) => {
       if (input === "/") {
@@ -192,27 +221,27 @@ export function Results() {
         return;
       }
       if (key.upArrow || input === "k") {
-        if (results.length > 0 && clamped > 0) setCursor(clamped - 1);
+        if (results.length > 0 && clamped > 0) moveTo(clamped - 1);
         else setMode("search");
         return;
       }
       if (results.length === 0) return;
-      if (key.downArrow || input === "j") setCursor(wrapStep(clamped, 1, results.length));
-      else if (key.pageUp) setCursor(Math.max(0, clamped - pageJump));
-      else if (key.pageDown) setCursor(Math.min(results.length - 1, clamped + pageJump));
+      if (key.downArrow || input === "j") moveTo(wrapStep(clamped, 1, results.length));
+      else if (key.pageUp) moveTo(Math.max(0, clamped - pageJump));
+      else if (key.pageDown) moveTo(Math.min(results.length - 1, clamped + pageJump));
       else if (key.return) {
         const r = results[clamped];
-        if (r) {
-          setDetail(r);
-          setMode("detail");
-        }
+        if (r) openTorrentScreen(r);
+      } else if (input === "s") {
+        const r = results[clamped];
+        if (r) openTorrentScreen(r);
       } else if (input === "d") {
         const r = results[clamped];
         if (r) openDownload(r);
       } else if (input === "y") {
         const r = results[clamped];
         if (r) copyResultMagnet(r);
-      } else if (input === "s") {
+      } else if (input === "t") {
         setSort((cur) => nextSort(cur));
       }
     },
@@ -345,7 +374,7 @@ export function Results() {
       />
       <Box marginTop={1}>
         <Panel
-          title={mode === "detail" ? "details" : browsing ? "latest" : "results"}
+          title={mode === "detail" ? "torrent" : browsing ? "latest" : "results"}
           width={contentWidth}
           focused={focused && mode !== "search"}
           count={mode === "detail" ? undefined : count}
@@ -377,7 +406,7 @@ export function Results() {
                       </>
                     ) : (
                       <Box width={12} flexShrink={0} marginLeft={1} justifyContent="flex-end">
-                        <Text bold dimColor>Added</Text>
+                        <Text bold dimColor>{sortMark("added", "Added")}</Text>
                       </Box>
                     )}
                     <Box width={4} flexShrink={0} marginLeft={1} justifyContent="flex-end">

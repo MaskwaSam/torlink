@@ -36,6 +36,7 @@ export function SearchBar({
             <TextField
               defaultValue={value}
               placeholder={placeholder}
+              width={Math.max(1, width - 6)}
               onSubmit={onSubmit}
               onChange={onChange}
               onExitDown={onExitDown}

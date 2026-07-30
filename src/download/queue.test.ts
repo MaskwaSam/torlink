@@ -20,12 +20,17 @@ class FakeBackend implements TorrentBackend {
   resumes: string[] = [];
   removes: string[] = [];
   verifies: string[] = [];
+  reconciles: { ids: string[]; dir: string }[] = [];
   statsById = new Map<string, TorrentProgress>();
   handlers = new Map<string, AddHandlers>();
 
   add(id: string, _source: string, _dir: string, handlers: AddHandlers): void {
     this.adds.push(id);
     this.handlers.set(id, handlers);
+  }
+
+  reconcile(ids: readonly string[], dir: string): void {
+    this.reconciles.push({ ids: [...ids], dir });
   }
 
   pause(id: string): void {
@@ -272,6 +277,7 @@ describe("DownloadQueue Transmission backend", () => {
     q.add({ id: HASH1, name: "One", magnet: `magnet:?xt=urn:btih:${HASH1}` }, "/downloads");
     expect(q.getItems()[0]).toMatchObject({ id: HASH1, backend: "transmission", status: "downloading" });
     expect(backend.adds).toEqual([HASH1]);
+    expect(backend.reconciles).toEqual([{ ids: [HASH1], dir: "/downloads" }]);
 
     q.pause(HASH1);
     expect(q.getItems()[0]?.status).toBe("paused");
@@ -287,6 +293,26 @@ describe("DownloadQueue Transmission backend", () => {
     q.cancel(HASH1);
     expect(q.getItems()).toEqual([]);
     expect(backend.removes).toEqual([HASH1]);
+    q.suspend();
+  });
+
+  it("reconciles the backend against restored visible queue and seed records", () => {
+    const backend = new FakeBackend();
+    const q = new DownloadQueue(backend);
+    q.restore([
+      item({
+        id: HASH2,
+        status: "downloading",
+        magnet: `magnet:?xt=urn:btih:${HASH2}`,
+        dir: "/downloads",
+      }),
+    ]);
+    q.restoreHistory([h({ id: HASH3, magnet: `magnet:?xt=urn:btih:${HASH3}` })]);
+    q.restoreSeeds([{ id: HASH3, status: "paused" }]);
+
+    q.reconcileBackend("/downloads");
+
+    expect(backend.reconciles.at(-1)).toEqual({ ids: [HASH2, HASH3], dir: "/downloads" });
     q.suspend();
   });
 

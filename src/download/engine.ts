@@ -30,6 +30,7 @@ export interface AddHandlers {
 
 export interface TorrentBackend {
   add(id: string, source: string, dir: string, handlers: AddHandlers): void;
+  reconcile?(ids: readonly string[], dir: string): void;
   pause(id: string): void;
   resume(id: string): void;
   remove(id: string): void;
@@ -41,6 +42,13 @@ export interface TorrentBackend {
 export const TRANSMISSION_INSTALL_HINT = "Transmission backend missing. Install with: brew install transmission-cli";
 
 const RPC_PATH = "/transmission/rpc";
+const TORLINK_SESSION_SETTINGS = {
+  "download-queue-enabled": false,
+  "queue-stalled-enabled": false,
+  "seed-queue-enabled": false,
+  "start-added-torrents": true,
+  start_paused: false,
+};
 const RPC_FIELDS = [
   "id",
   "hashString",
@@ -148,6 +156,11 @@ export class TransmissionRpcClient {
     return res.torrents ?? [];
   }
 
+  async getAll(): Promise<TransmissionTorrent[]> {
+    const res = await this.request<TorrentGetResponse>("torrent-get", { fields: RPC_FIELDS });
+    return res.torrents ?? [];
+  }
+
   async start(ids: string[]): Promise<void> {
     await this.request("torrent-start", { ids });
   }
@@ -162,6 +175,10 @@ export class TransmissionRpcClient {
 
   async verify(ids: string[]): Promise<void> {
     await this.request("torrent-verify", { ids });
+  }
+
+  async closeSession(): Promise<void> {
+    await this.request("session-close");
   }
 }
 
@@ -231,10 +248,47 @@ async function waitForRpc(url: string, fetchImpl: FetchLike, timeoutMs = 8_000):
   throw lastError instanceof Error ? lastError : new Error("Transmission RPC did not become ready");
 }
 
+async function configureTorLinkSession(url: string, fetchImpl: FetchLike): Promise<void> {
+  const client = new TransmissionRpcClient(url, fetchImpl);
+  await client.request("session-set", TORLINK_SESSION_SETTINGS);
+}
+
+async function readSavedRpcPort(configDir: string): Promise<number | null> {
+  try {
+    const raw = await fs.readFile(path.join(configDir, "settings.json"), "utf8");
+    const port = Number((JSON.parse(raw) as Record<string, unknown>)["rpc-port"]);
+    return Number.isInteger(port) && port > 0 && port <= 65_535 ? port : null;
+  } catch {
+    return null;
+  }
+}
+
+async function existingEndpoint(
+  configDir: string,
+  fetchImpl: FetchLike,
+): Promise<TransmissionEndpoint | null> {
+  const port = await readSavedRpcPort(configDir);
+  if (!port) return null;
+  const url = `http://127.0.0.1:${port}${RPC_PATH}`;
+  try {
+    await waitForRpc(url, fetchImpl, 1_000);
+    await configureTorLinkSession(url, fetchImpl);
+    return {
+      url,
+      destroy: () => {
+        void new TransmissionRpcClient(url, fetchImpl).closeSession().catch(() => {});
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 export interface ManagedTransmissionDaemonOptions {
   binary?: string;
   stateDir?: string;
   rpcPort?: number;
+  peerPort?: number;
   fetchImpl?: FetchLike;
   spawnImpl?: typeof spawn;
 }
@@ -253,7 +307,16 @@ export class ManagedTransmissionDaemon implements DaemonRunner {
     const configDir = path.join(root, "daemon-config");
     await fs.mkdir(configDir, { recursive: true });
     await fs.mkdir(downloadDir, { recursive: true }).catch(() => {});
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    if (this.opts.rpcPort === undefined) {
+      const existing = await existingEndpoint(configDir, fetchImpl);
+      if (existing) {
+        this.endpoint = existing;
+        return existing;
+      }
+    }
     const port = this.opts.rpcPort ?? (await freeLocalPort());
+    const peerPort = this.opts.peerPort ?? (await freeLocalPort());
     const url = `http://127.0.0.1:${port}${RPC_PATH}`;
     const args = [
       "--foreground",
@@ -265,6 +328,8 @@ export class ManagedTransmissionDaemon implements DaemonRunner {
       "127.0.0.1",
       "--port",
       String(port),
+      "--peerport",
+      String(peerPort),
       "--allowed",
       "127.0.0.1",
       "--no-auth",
@@ -284,7 +349,8 @@ export class ManagedTransmissionDaemon implements DaemonRunner {
     };
     this.endpoint = { url, destroy };
     try {
-      await waitForRpc(url, this.opts.fetchImpl ?? fetch);
+      await waitForRpc(url, fetchImpl);
+      await configureTorLinkSession(url, fetchImpl);
       return this.endpoint;
     } catch (e) {
       destroy();
@@ -323,6 +389,15 @@ function toProgress(t: TransmissionTorrent): TorrentProgress {
   };
 }
 
+function normalizeHash(id: string | undefined): string | null {
+  const clean = id?.trim().toLowerCase();
+  return clean && /^[a-f0-9]{40}$/.test(clean) ? clean : null;
+}
+
+function isHash(id: string | null): id is string {
+  return id !== null;
+}
+
 export class TorrentEngine implements TorrentBackend {
   private rpc: TransmissionRpcClient | null = null;
   private endpoint: TransmissionEndpoint | null = null;
@@ -330,6 +405,10 @@ export class TorrentEngine implements TorrentBackend {
   private starting: Promise<TransmissionRpcClient> | null = null;
 
   constructor(private readonly runner: DaemonRunner = new ManagedTransmissionDaemon()) {}
+
+  private hashFor(id: string): string | null {
+    return this.records.get(id)?.hash ?? normalizeHash(id);
+  }
 
   private async client(downloadDir: string): Promise<TransmissionRpcClient> {
     if (this.rpc) return this.rpc;
@@ -362,10 +441,26 @@ export class TorrentEngine implements TorrentBackend {
     })();
   }
 
+  reconcile(ids: readonly string[], dir: string): void {
+    void (async () => {
+      try {
+        const expected = new Set(ids.map((id) => normalizeHash(id)).filter(isHash));
+        const rpc = await this.client(dir);
+        const stale = (await rpc.getAll())
+          .map((torrent) => normalizeHash(torrent.hashString))
+          .filter((hash): hash is string => hash !== null && !expected.has(hash));
+        if (stale.length > 0) await rpc.remove(stale);
+      } catch {
+        // Startup reconciliation is a safety net. Active adds/polls still surface
+        // actionable Transmission errors through their normal handlers.
+      }
+    })();
+  }
+
   pause(id: string): void {
-    const rec = this.records.get(id);
-    if (!rec) return;
-    void this.rpc?.stop([rec.hash]).catch(() => {});
+    const hash = this.hashFor(id);
+    if (!hash) return;
+    void this.rpc?.stop([hash]).catch(() => {});
   }
 
   resume(id: string): void {
@@ -377,24 +472,26 @@ export class TorrentEngine implements TorrentBackend {
   }
 
   remove(id: string): void {
-    const rec = this.records.get(id);
+    const hash = this.hashFor(id);
     this.records.delete(id);
-    if (!rec) return;
-    void this.rpc?.remove([rec.hash]).catch(() => {});
+    if (!hash) return;
+    void this.rpc?.remove([hash]).catch(() => {});
   }
 
   verify(id: string): void {
+    const hash = this.hashFor(id);
+    if (!hash) return;
     const rec = this.records.get(id);
-    if (!rec) return;
-    void this.rpc?.verify([rec.hash]).catch((e) => rec.handlers.onError?.(message(e)));
+    void this.rpc?.verify([hash]).catch((e) => rec?.handlers.onError?.(message(e)));
   }
 
   async stats(id: string): Promise<TorrentProgress | null> {
     const rec = this.records.get(id);
-    if (!rec || !this.rpc) return null;
-    const [torrent] = await this.rpc.get([rec.hash]);
+    const hash = this.hashFor(id);
+    if (!hash || !this.rpc) return null;
+    const [torrent] = await this.rpc.get([hash]);
     if (!torrent) return null;
-    if (torrent.error && torrent.errorString) rec.handlers.onError?.(torrent.errorString);
+    if (torrent.error && torrent.errorString) rec?.handlers.onError?.(torrent.errorString);
     return toProgress(torrent);
   }
 

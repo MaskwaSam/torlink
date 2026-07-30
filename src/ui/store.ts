@@ -13,7 +13,6 @@ export type Category =
   | "games"
   | "movies"
   | "tv"
-  | "anime"
   | "books"
   | "audiobooks"
   | "music";
@@ -25,7 +24,6 @@ export const CATEGORIES: { key: Category; label: string; group?: SourceGroup }[]
   { key: "games", label: "Games", group: "Games" },
   { key: "movies", label: "Movies", group: "Movies" },
   { key: "tv", label: "TV", group: "TV" },
-  { key: "anime", label: "Anime", group: "Anime" },
   { key: "books", label: "Books", group: "Books" },
   { key: "audiobooks", label: "Audiobooks", group: "Audiobooks" },
   { key: "music", label: "Music", group: "Music" },

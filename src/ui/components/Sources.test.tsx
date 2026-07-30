@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "ink-testing-library";
 import { Sources } from "./Sources";
 import { StoreContext, type Store } from "../store";
-import { SOURCE_IDS } from "../../sources/types";
+import { ACTIVE_SOURCE_IDS } from "../../sources/registry";
 
 function makeStore(overrides: Partial<Store> = {}): Store {
   const noop = (): void => {};
@@ -87,7 +87,7 @@ describe("Sources", () => {
           setNotice,
           config: {
             ...makeStore().config,
-            disabledSources: SOURCE_IDS.filter((id) => id !== "fitgirl"),
+            disabledSources: ACTIVE_SOURCE_IDS.filter((id) => id !== "fitgirl"),
           },
         })}
       >

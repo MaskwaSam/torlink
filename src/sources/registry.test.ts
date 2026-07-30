@@ -22,6 +22,12 @@ describe("source registry", () => {
     expect(new Set(SOURCES.map((s) => s.id)).size).toBe(SOURCES.length);
   });
 
+  it("hides anime-only sources from the active registry", () => {
+    expect(sourcesByGroup().map((g) => g.group)).not.toContain("Anime");
+    expect(SOURCES.map((s) => s.id)).not.toContain("nyaa");
+    expect(SOURCES.map((s) => s.id)).not.toContain("subsplease");
+  });
+
   it("filters disabled sources without mutating the registry", () => {
     expect(activeSources(["fitgirl", "x1337-books"]).map((s) => s.id)).not.toContain("fitgirl");
     expect(SOURCES.map((s) => s.id)).toContain("fitgirl");

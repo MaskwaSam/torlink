@@ -28,12 +28,10 @@ export const RULE = "#6b6577";
 
 export const GUTTER = 2;
 
-export const SOURCE_STYLE: Record<SourceId, { tag: string; color: string }> = {
+export const SOURCE_STYLE: Partial<Record<SourceId, { tag: string; color: string }>> = {
   fitgirl: { tag: "FG", color: COLOR.accent },
   yts: { tag: "YTS", color: COLOR.good },
   eztv: { tag: "EZTV", color: COLOR.warn },
-  nyaa: { tag: "NYAA", color: COLOR.bright },
-  subsplease: { tag: "SUB", color: "#b9a7e6" },
   "tpb-movies": { tag: "TPB", color: "#5fd0c5" },
   "tpb-tv": { tag: "TPB", color: "#5fd0c5" },
   "tpb-books": { tag: "TPB", color: "#5fd0c5" },
