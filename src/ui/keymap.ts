@@ -37,6 +37,7 @@ export const HELP_GROUPS: HelpGroup[] = [
   {
     title: "Downloads",
     hints: [
+      { keys: "↵", label: "Download details" },
       { keys: "p", label: "Pause/resume" },
       { keys: "a", label: "Toggle auto-resume" },
       { keys: "e", label: "Toggle auto-stop seeding" },
@@ -104,10 +105,10 @@ export function footerHints(
   }
   if (section === "downloads") {
     if (downloadFocus === "paused") {
-      return [{ keys: "p", label: "Resume" }, { keys: "r", label: "Verify" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
+      return [{ keys: "↵", label: "Details" }, { keys: "p", label: "Resume" }, { keys: "r", label: "Verify" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
     }
     if (downloadFocus === "failed") {
-      return [{ keys: "f", label: "Retry" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
+      return [{ keys: "↵", label: "Details" }, { keys: "f", label: "Retry" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
     }
     if (downloadFocus === "recent") {
       return [
@@ -119,7 +120,7 @@ export function footerHints(
         ALWAYS,
       ];
     }
-    return [{ keys: "p", label: "Pause" }, { keys: "r", label: "Verify" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
+    return [{ keys: "↵", label: "Details" }, { keys: "p", label: "Pause" }, { keys: "r", label: "Verify" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
   }
   return [
     NAVIGATE,

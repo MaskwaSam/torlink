@@ -46,8 +46,10 @@ function makeQueue(active: QueueItem[], recent: HistoryItem[]) {
     cancel: vi.fn(),
     removeHistory: vi.fn(),
     retryFailed: vi.fn(),
+    retry: vi.fn(),
     clearHistory: vi.fn(),
     togglePause: vi.fn(),
+    verify: vi.fn(),
   };
 }
 
@@ -107,6 +109,68 @@ function tick(): Promise<void> {
 afterEach(() => cleanup());
 
 describe("Downloads", () => {
+  it("opens active download details with enter", async () => {
+    const queue = makeQueue([item({ files: 3 })], []);
+    const setCaptureMode = vi.fn();
+    const { stdin, lastFrame } = render(
+      <StoreContext.Provider value={makeStore(queue, { setCaptureMode })}>
+        <Downloads />
+      </StoreContext.Provider>,
+    );
+
+    stdin.write("\r");
+    await tick();
+
+    expect(lastFrame()).toContain("Status");
+    expect(lastFrame()).toContain("Progress");
+    expect(lastFrame()).toContain("Folder");
+    expect(lastFrame()).toContain("Magnet");
+    expect(lastFrame()).toContain("Options");
+    expect(queue.cancel).not.toHaveBeenCalled();
+    expect(setCaptureMode).toHaveBeenCalledWith("esc");
+  });
+
+  it("keeps enter as download-again for recent torrents", async () => {
+    const queue = makeQueue([], [history()]);
+    const startDownload = vi.fn();
+    const { stdin } = render(
+      <StoreContext.Provider value={makeStore(queue, { startDownload })}>
+        <Downloads />
+      </StoreContext.Provider>,
+    );
+
+    stdin.write("\r");
+    await tick();
+
+    expect(startDownload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "history-id",
+        name: "Recent torrent",
+        magnet: "magnet:?xt=urn:btih:history",
+        sizeBytes: 1000,
+      }),
+    );
+  });
+
+  it("keeps detail actions wired to the highlighted active torrent", async () => {
+    const queue = makeQueue([item()], []);
+    const { stdin } = render(
+      <StoreContext.Provider value={makeStore(queue)}>
+        <Downloads />
+      </StoreContext.Provider>,
+    );
+
+    stdin.write("\r");
+    await tick();
+    stdin.write("p");
+    await tick();
+    stdin.write("r");
+    await tick();
+
+    expect(queue.togglePause).toHaveBeenCalledWith("active-id");
+    expect(queue.verify).toHaveBeenCalledWith("active-id");
+  });
+
   it("deletes the highlighted active torrent with backspace", async () => {
     const queue = makeQueue([item()], []);
     const { stdin } = render(

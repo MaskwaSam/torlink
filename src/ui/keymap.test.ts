@@ -20,4 +20,19 @@ describe("search result keymap", () => {
       ]),
     );
   });
+
+  it("advertises enter details for active downloads", () => {
+    const downloads = HELP_GROUPS.find((group) => group.title === "Downloads");
+
+    expect(downloads?.hints).toEqual(
+      expect.arrayContaining([{ keys: "↵", label: "Download details" }]),
+    );
+
+    expect(footerHints("content", "downloads", "downloading")).toEqual(
+      expect.arrayContaining([{ keys: "↵", label: "Details" }]),
+    );
+    expect(footerHints("content", "downloads", "recent")).toEqual(
+      expect.arrayContaining([{ keys: "d", label: "Download again" }]),
+    );
+  });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Box, Text, useInput } from "ink";
 import { useStore, useQueueItems, useQueueHistory, type DownloadFocus } from "../store";
 import { Panel } from "./Panel";
@@ -21,6 +21,18 @@ const ROWS_PER_ACTIVE = 2;
 const MARK = 2;
 
 const PAUSED = "#7c7785";
+type Mode = "list" | "detail";
+
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <Box>
+      <Box width={11} flexShrink={0}>
+        <Text dimColor>{label}</Text>
+      </Box>
+      <Box flexGrow={1} minWidth={0}>{value}</Box>
+    </Box>
+  );
+}
 
 function statusColor(status: QueueItem["status"]): string {
   if (status === "failed") return COLOR.bad;
@@ -44,6 +56,88 @@ function rightStats(it: QueueItem): string {
   return truncate(terminalSafeText(it.error || "failed"), 28);
 }
 
+function statusText(it: QueueItem): string {
+  if (it.status === "failed") return "failed";
+  if (it.status === "paused") return it.pauseReason === "network" ? "paused by Surfshark gate" : "paused";
+  return "downloading";
+}
+
+function DownloadDetail({ item }: { item: QueueItem }) {
+  const ss = sourceStyle(item.source);
+  const done = item.downloadedBytes > 0 ? formatBytes(item.downloadedBytes) : "0 B";
+  const total = item.totalBytes > 0 ? formatBytes(item.totalBytes) : "unknown";
+  const remaining =
+    item.totalBytes > 0 ? formatBytes(Math.max(0, item.totalBytes - item.downloadedBytes)) : "unknown";
+  const eta = item.eta ? formatEtaShort(item.eta) : item.status === "downloading" ? "unknown" : "-";
+  const added = formatRelative(item.addedAt / 1000);
+  const sc = statusColor(item.status);
+  const progressMeta = [
+    `${done} of ${total}`,
+    `${remaining} left`,
+    item.files ? `${item.files} files` : null,
+    added ? `added ${added}` : null,
+  ].filter(Boolean).join(` ${ICON.dot} `);
+  const action = item.status === "failed"
+    ? "f retry"
+    : item.status === "paused"
+      ? "p resume"
+      : "p pause";
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Box flexGrow={1} minWidth={0}>
+          <Text bold color={COLOR.text} wrap="truncate-end">
+            {cleanText(item.name)}
+          </Text>
+        </Box>
+        <Box flexShrink={0} marginLeft={2}>
+          <Text color={item.source ? ss.color : COLOR.alt} bold>
+            {item.source ? ss.tag : "mag"}
+          </Text>
+        </Box>
+      </Box>
+      <Box flexDirection="column">
+        <DetailRow
+          label="Status"
+          value={
+            <Text>
+              <Text color={sc}>{statusText(item)}</Text>
+              <Text dimColor>{` ${ICON.dot} ${item.progress}%`}</Text>
+            </Text>
+          }
+        />
+        <DetailRow
+          label="Progress"
+          value={
+            <Text dimColor>{progressMeta}</Text>
+          }
+        />
+        <DetailRow
+          label={item.error ? "Error" : "Transfer"}
+          value={
+            item.error ? (
+              <Text color={COLOR.bad} wrap="truncate-end">{terminalSafeText(item.error)}</Text>
+            ) : (
+              <Text dimColor>{`${formatBytesPerSec(item.speed) || "0 B/s"} ${ICON.dot} ${item.peers} peer${item.peers === 1 ? "" : "s"} ${ICON.dot} ${eta}`}</Text>
+            )
+          }
+        />
+        <DetailRow
+          label="Folder"
+          value={
+            <Text color={COLOR.alt} dimColor wrap="truncate-end">
+              {terminalSafeText(item.dir)}
+            </Text>
+          }
+        />
+        <DetailRow label="Hash" value={<Text color={COLOR.alt} dimColor wrap="truncate-end">{terminalSafeText(item.id)}</Text>} />
+        <DetailRow label="Magnet" value={<Text color={COLOR.alt} dimColor wrap="truncate-end">{terminalSafeText(item.magnet)}</Text>} />
+        <DetailRow label="Options" value={<Text color={COLOR.text}>{`${action} ${ICON.dot} r verify ${ICON.dot} del/c cancel ${ICON.dot} esc back`}</Text>} />
+      </Box>
+    </Box>
+  );
+}
+
 export function Downloads() {
   const {
     queue,
@@ -55,6 +149,7 @@ export function Downloads() {
     startDownload,
     setNotice,
     setDownloadFocus,
+    setCaptureMode,
   } = useStore();
   const active = useQueueItems(queue);
   const recent = useQueueHistory(queue);
@@ -62,9 +157,29 @@ export function Downloads() {
 
   const total = active.length + recent.length;
   const [cursor, setCursor] = useState(0);
+  const [mode, setMode] = useState<Mode>("list");
+  const [detailId, setDetailId] = useState<string | null>(null);
   const clamped = Math.min(cursor, Math.max(0, total - 1));
   const inActive = clamped < active.length;
   const recentCursor = clamped - active.length;
+  const detailItem = detailId ? active.find((it) => it.id === detailId) : undefined;
+
+  useEffect(() => {
+    if (!focused) {
+      setMode("list");
+      setDetailId(null);
+      return;
+    }
+    setCaptureMode(mode === "detail" ? "esc" : "none");
+    return () => setCaptureMode("none");
+  }, [focused, mode, setCaptureMode]);
+
+  useEffect(() => {
+    if (mode === "detail" && !detailItem) {
+      setMode("list");
+      setDetailId(null);
+    }
+  }, [mode, detailItem]);
 
   useInput(
     (input, key) => {
@@ -79,7 +194,11 @@ export function Downloads() {
       else if (inActive) {
         const it = active[clamped];
         if (!it) return;
-        if (deleteCommand) queue.cancel(it.id);
+        if (key.return) {
+          setDetailId(it.id);
+          setMode("detail");
+        }
+        else if (deleteCommand) queue.cancel(it.id);
         else if (input === "r") {
           queue.verify(it.id);
         }
@@ -101,7 +220,34 @@ export function Downloads() {
         else if (deleteCommand) queue.removeHistory(h.id);
       }
     },
-    { isActive: focused && total > 0 },
+    { isActive: focused && total > 0 && mode === "list" },
+  );
+
+  useInput(
+    (input, key) => {
+      if (key.escape) {
+        setMode("list");
+        setDetailId(null);
+        return;
+      }
+      const it = detailItem;
+      if (!it) return;
+      const deleteCommand = input === "c" || key.backspace || key.delete;
+      if (deleteCommand) {
+        queue.cancel(it.id);
+        setMode("list");
+        setDetailId(null);
+      } else if (input === "r") {
+        queue.verify(it.id);
+      } else if (input === "p" && it.status !== "failed") {
+        if (it.status === "paused" && !networkAllowed) setNotice(vpn.reason);
+        else queue.togglePause(it.id);
+      } else if (input === "f" && it.status === "failed") {
+        if (!networkAllowed) setNotice(vpn.reason);
+        else queue.retry(it.id);
+      }
+    },
+    { isActive: focused && mode === "detail" },
   );
 
   let focusKind: DownloadFocus | null = null;
@@ -118,6 +264,14 @@ export function Downloads() {
   }, [focusKind, setDownloadFocus]);
 
   const panelH = Math.max(5, listRows - 1);
+
+  if (mode === "detail" && detailItem) {
+    return (
+      <Panel title="download" width={contentWidth} focused={focused} height={panelH}>
+        <DownloadDetail item={detailItem} />
+      </Panel>
+    );
+  }
 
   if (total === 0) {
     return (
