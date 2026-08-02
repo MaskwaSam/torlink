@@ -11,6 +11,7 @@ import { parseInput } from "../sources/magnet";
 import { magnetFromTorrentFile } from "../sources/torrentFile";
 import { readClipboard, writeClipboard } from "../util/clipboard";
 import { cleanText, terminalSafeText, truncate } from "../util/format";
+import { openFolder } from "../util/openFolder";
 import {
   StoreContext,
   type CaptureMode,
@@ -35,6 +36,7 @@ import { TabTitle } from "./components/TabTitle";
 import { Splash } from "./views/Splash";
 import { FolderPrompt } from "./components/FolderPrompt";
 import { footerHints } from "./keymap";
+import { LOGO_WIDTH } from "./logo";
 import { COLOR, ICON } from "./theme";
 import { useMouseWheel } from "./hooks/useMouseWheel";
 import { useVpnStatus } from "./hooks/useVpnStatus";
@@ -269,6 +271,22 @@ export function App({
     })();
   }, []);
 
+  const openDownloadFolder = useCallback((raw: string) => {
+    const dir = normalizeDownloadDir(raw);
+    if (!dir) {
+      setNotice("That download has no folder recorded.");
+      return;
+    }
+    void (async () => {
+      const opened = await openFolder(dir);
+      setNotice(
+        opened
+          ? `Opened folder: ${truncate(dir, 48)}`
+          : `Folder is unavailable: ${truncate(dir, 44)}`,
+      );
+    })();
+  }, []);
+
   const submitQuery = useCallback(
     (raw: string) => {
       const q = raw.trim();
@@ -333,6 +351,7 @@ export function App({
   const ruleWidth = Math.max(10, cols - 2);
   const safeNotice = notice ? terminalSafeText(notice) : null;
   const noticeColor = networkAllowed ? COLOR.good : COLOR.warn;
+  const showBrowserLogo = cols >= LOGO_WIDTH + 2;
 
   const store: Store | null = useMemo(() => {
     if (!queue || !config) return null;
@@ -358,6 +377,7 @@ export function App({
       setSeedFocus,
       startDownload,
       copyMagnet,
+      openDownloadFolder,
       notice,
       setNotice,
       quitAll,
@@ -384,6 +404,7 @@ export function App({
     seedFocus,
     startDownload,
     copyMagnet,
+    openDownloadFolder,
     notice,
     listRows,
     compact,
@@ -485,8 +506,22 @@ export function App({
       <TabTitle />
       <Box flexDirection="column" paddingX={1}>
         <Box justifyContent="space-between">
-          <Logo />
-          {safeNotice ? <Text color={noticeColor}>{safeNotice}</Text> : null}
+          <Box flexShrink={0}>
+            {showBrowserLogo ? (
+              <Logo />
+            ) : (
+              <Text bold color={COLOR.accent}>
+                torlink
+              </Text>
+            )}
+          </Box>
+          {safeNotice ? (
+            <Box flexShrink={1} minWidth={0} marginLeft={2}>
+              <Text color={noticeColor} wrap="truncate-end">
+                {safeNotice}
+              </Text>
+            </Box>
+          ) : null}
         </Box>
         {showTopRule ? <Rule width={ruleWidth} /> : null}
 

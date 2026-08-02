@@ -132,7 +132,7 @@ function DownloadDetail({ item }: { item: QueueItem }) {
         />
         <DetailRow label="Hash" value={<Text color={COLOR.alt} dimColor wrap="truncate-end">{terminalSafeText(item.id)}</Text>} />
         <DetailRow label="Magnet" value={<Text color={COLOR.alt} dimColor wrap="truncate-end">{terminalSafeText(item.magnet)}</Text>} />
-        <DetailRow label="Options" value={<Text color={COLOR.text}>{`${action} ${ICON.dot} r verify ${ICON.dot} del/c cancel ${ICON.dot} esc back`}</Text>} />
+        <DetailRow label="Options" value={<Text color={COLOR.text}>{`${action} ${ICON.dot} r verify ${ICON.dot} O folder ${ICON.dot} del/c cancel ${ICON.dot} esc back`}</Text>} />
       </Box>
     </Box>
   );
@@ -150,6 +150,7 @@ export function Downloads() {
     setNotice,
     setDownloadFocus,
     setCaptureMode,
+    openDownloadFolder,
   } = useStore();
   const active = useQueueItems(queue);
   const recent = useQueueHistory(queue);
@@ -191,6 +192,10 @@ export function Downloads() {
         else queue.retryFailed();
       }
       else if (input === "x") queue.clearHistory();
+      else if (input === "O") {
+        const selected = inActive ? active[clamped] : recent[recentCursor];
+        if (selected) openDownloadFolder(selected.dir);
+      }
       else if (inActive) {
         const it = active[clamped];
         if (!it) return;
@@ -233,7 +238,9 @@ export function Downloads() {
       const it = detailItem;
       if (!it) return;
       const deleteCommand = input === "c" || key.backspace || key.delete;
-      if (deleteCommand) {
+      if (input === "O") {
+        openDownloadFolder(it.dir);
+      } else if (deleteCommand) {
         queue.cancel(it.id);
         setMode("list");
         setDetailId(null);

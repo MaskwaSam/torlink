@@ -50,11 +50,11 @@
     <text x="166.4" y="282" textLength="278.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill-opacity="0.55">earch or paste a magnet link…</text>
     <rect x="708.1" y="266" width="1.4" height="22" fill="#a78bfa"/>
     <text x="118.4" y="304" textLength="595.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill="#a78bfa">╰────────────────────────────────────────────────────────────╯</text>
-    <text x="233.6" y="348" textLength="9.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill="#b9a7e6">↵</text>
-    <text x="252.8" y="348" textLength="153.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill-opacity="0.55">search  ·  empty</text>
-    <text x="416" y="348" textLength="9.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill="#b9a7e6">↵</text>
-    <text x="435.2" y="348" textLength="86.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill-opacity="0.55">browse  ·</text>
-    <text x="540.8" y="348" textLength="19.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill="#b9a7e6">^c</text>
-    <text x="569.6" y="348" textLength="38.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill-opacity="0.55">quit</text>
+    <text x="252.8" y="348" textLength="9.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill="#b9a7e6">↵</text>
+    <text x="272" y="348" textLength="86.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill-opacity="0.55">search  ·</text>
+    <text x="377.6" y="348" textLength="28.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill="#b9a7e6">⇥/↓</text>
+    <text x="416" y="348" textLength="86.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill-opacity="0.55">browse  ·</text>
+    <text x="521.6" y="348" textLength="19.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill="#b9a7e6">^c</text>
+    <text x="550.4" y="348" textLength="38.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve" fill-opacity="0.55">quit</text>
   </g>
 </svg>

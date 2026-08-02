@@ -90,6 +90,7 @@ function makeStore(queue: ReturnType<typeof makeQueue>, overrides: Partial<Store
     setSeedFocus: noop,
     startDownload: noop,
     copyMagnet: noop,
+    openDownloadFolder: noop,
     notice: null,
     setNotice: noop,
     quitAll: noop,
@@ -169,6 +170,53 @@ describe("Downloads", () => {
 
     expect(queue.togglePause).toHaveBeenCalledWith("active-id");
     expect(queue.verify).toHaveBeenCalledWith("active-id");
+  });
+
+  it("opens the highlighted active download folder with uppercase O", async () => {
+    const queue = makeQueue([item({ dir: "/active-folder" })], []);
+    const openDownloadFolder = vi.fn();
+    const { stdin } = render(
+      <StoreContext.Provider value={makeStore(queue, { openDownloadFolder })}>
+        <Downloads />
+      </StoreContext.Provider>,
+    );
+
+    stdin.write("O");
+    await tick();
+
+    expect(openDownloadFolder).toHaveBeenCalledWith("/active-folder");
+  });
+
+  it("opens the highlighted recent download folder with uppercase O", async () => {
+    const queue = makeQueue([], [history({ dir: "/recent-folder" })]);
+    const openDownloadFolder = vi.fn();
+    const { stdin } = render(
+      <StoreContext.Provider value={makeStore(queue, { openDownloadFolder })}>
+        <Downloads />
+      </StoreContext.Provider>,
+    );
+
+    stdin.write("O");
+    await tick();
+
+    expect(openDownloadFolder).toHaveBeenCalledWith("/recent-folder");
+  });
+
+  it("opens the active download folder from its detail view", async () => {
+    const queue = makeQueue([item({ dir: "/detail-folder" })], []);
+    const openDownloadFolder = vi.fn();
+    const { stdin } = render(
+      <StoreContext.Provider value={makeStore(queue, { openDownloadFolder })}>
+        <Downloads />
+      </StoreContext.Provider>,
+    );
+
+    stdin.write("\r");
+    await tick();
+    stdin.write("O");
+    await tick();
+
+    expect(openDownloadFolder).toHaveBeenCalledWith("/detail-folder");
   });
 
   it("deletes the highlighted active torrent with backspace", async () => {

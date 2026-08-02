@@ -3,12 +3,14 @@ import { Box, Text, useInput } from "ink";
 import { useStore, CATEGORIES } from "../store";
 import { Spinner } from "./Spinner";
 import { SearchBar } from "./SearchBar";
+import { TextField } from "./TextField";
 import { Panel } from "./Panel";
 import { Rule } from "./Rule";
 import { useConcurrentSearch } from "../hooks/useConcurrentSearch";
 import { activeSources, getSource } from "../../sources/registry";
 import { stickCursor, wrapStep, windowStart, resultsPanelOuter } from "../move";
 import { sortResults, nextSort, sortLabel, sortArrow, type Sort, type SortField } from "../sort";
+import { filterResults } from "../filter";
 import { COLOR, GUTTER, ICON, sourceStyle } from "../theme";
 import {
   cleanText,
@@ -20,7 +22,7 @@ import {
 } from "../../util/format";
 import type { Source, TorrentResult } from "../../sources/types";
 
-type Mode = "list" | "search" | "detail";
+type Mode = "list" | "search" | "detail" | "filter";
 
 const PLACEHOLDER = "Search or paste a magnet link…";
 
@@ -152,13 +154,18 @@ export function Results() {
   const search = useConcurrentSearch(query, networkAllowed, searchSources);
 
   const [sort, setSort] = useState<Sort>("none");
-  const results = useMemo(() => {
+  const [hideDead, setHideDead] = useState(false);
+  const [textFilter, setTextFilter] = useState("");
+  const baseResults = useMemo(() => {
     const cat = CATEGORIES.find((c) => c.key === section);
-    const base = cat?.group
+    return cat?.group
       ? search.results.filter((r) => getSource(r.source).group === cat.group)
       : search.results;
-    return sortResults(base, sort);
-  }, [search.results, section, sort]);
+  }, [search.results, section]);
+  const results = useMemo(
+    () => sortResults(filterResults(baseResults, hideDead, textFilter), sort),
+    [baseResults, hideDead, textFilter, sort],
+  );
 
   const focused = region === "content";
   const [mode, setMode] = useState<Mode>("list");
@@ -173,11 +180,14 @@ export function Results() {
   useEffect(() => {
     selRef.current = null;
     setCursor(0);
+    setTextFilter("");
   }, [query, section]);
 
   useEffect(() => {
     if (!focused) return;
-    setCaptureMode(mode === "search" ? "text" : mode === "detail" ? "esc" : "none");
+    setCaptureMode(
+      mode === "search" || mode === "filter" ? "text" : mode === "detail" ? "esc" : "none",
+    );
     return () => setCaptureMode("none");
   }, [mode, focused, setCaptureMode]);
 
@@ -188,7 +198,8 @@ export function Results() {
   const clamped = Math.min(cursor, Math.max(0, results.length - 1));
 
   const searchH = 3;
-  const panelOuter = resultsPanelOuter(listRows, searchH);
+  const filterH = mode === "filter" || textFilter.trim() ? 1 : 0;
+  const panelOuter = resultsPanelOuter(listRows, searchH + filterH);
   const listHeight = Math.max(3, panelOuter - 4);
   const pageJump = Math.max(1, listHeight - 1);
 
@@ -225,6 +236,18 @@ export function Results() {
         else setMode("search");
         return;
       }
+      if (input === "t") {
+        setSort((cur) => nextSort(cur));
+        return;
+      }
+      if (input === "z") {
+        setHideDead((current) => !current);
+        return;
+      }
+      if (input === "f") {
+        setMode("filter");
+        return;
+      }
       if (results.length === 0) return;
       if (key.downArrow || input === "j") moveTo(wrapStep(clamped, 1, results.length));
       else if (key.pageUp) moveTo(Math.max(0, clamped - pageJump));
@@ -241,8 +264,6 @@ export function Results() {
       } else if (input === "y") {
         const r = results[clamped];
         if (r) copyResultMagnet(r);
-      } else if (input === "t") {
-        setSort((cur) => nextSort(cur));
       }
     },
     { isActive: focused && mode === "list" },
@@ -263,7 +284,7 @@ export function Results() {
     (_input, key) => {
       if (key.escape) setMode("list");
     },
-    { isActive: focused && mode === "search" },
+    { isActive: focused && (mode === "search" || mode === "filter") },
   );
 
   const onSubmit = (value: string): void => {
@@ -295,7 +316,14 @@ export function Results() {
     return codes.length ? ` (${codes.join(", ")})` : "";
   };
 
-  const sortNote = sort === "none" ? "" : `  ${ICON.dot} sort: ${sortLabel(sort)}`;
+  const viewNotes = [
+    sort === "none" ? "" : `sort: ${sortLabel(sort)}`,
+    hideDead ? "live only" : "",
+    textFilter.trim()
+      ? `filter: ${truncate(terminalSafeText(textFilter.trim()), 20)}`
+      : "",
+  ].filter(Boolean);
+  const viewNote = viewNotes.length ? `  ${ICON.dot} ${viewNotes.join(`  ${ICON.dot} `)}` : "";
 
   const status = () => {
     if (!networkAllowed) {
@@ -309,12 +337,21 @@ export function Results() {
     }
     if (search.loading) {
       if (results.length > 0)
-        return <Text dimColor>{`searching… ${search.done}/${search.total} sources${sortNote}`}</Text>;
+        return <Text dimColor>{`searching… ${search.done}/${search.total} sources${viewNote}`}</Text>;
       return (
         <Spinner label={`${browsing ? "Loading" : "Searching"} ${search.done}/${search.total} sources`} />
       );
     }
     if (results.length === 0) {
+      if (baseResults.length > 0 && (hideDead || textFilter.trim())) {
+        return (
+          <Text dimColor>
+            {textFilter.trim()
+              ? `No results match "${truncate(terminalSafeText(textFilter.trim()), 28)}".`
+              : "No results with known active seeders."}
+          </Text>
+        );
+      }
       if (erroredCount >= search.total) {
         const downAll = searchSources.filter((s) => search.perSource[s.id]?.error);
         return (
@@ -344,7 +381,7 @@ export function Results() {
     const head = browsing
       ? "newest across all sources"
       : `${results.length} result${results.length === 1 ? "" : "s"}`;
-    return <Text dimColor>{`${head}${note}${sortNote}`}</Text>;
+    return <Text dimColor>{`${head}${note}${viewNote}`}</Text>;
   };
 
   const sortMark = (field: SortField, label: string): ReactNode => {
@@ -376,7 +413,7 @@ export function Results() {
         <Panel
           title={mode === "detail" ? "torrent" : browsing ? "latest" : "results"}
           width={contentWidth}
-          focused={focused && mode !== "search"}
+          focused={focused && mode !== "search" && mode !== "filter"}
           count={mode === "detail" ? undefined : count}
           height={panelOuter}
         >
@@ -467,6 +504,37 @@ export function Results() {
           )}
         </Panel>
       </Box>
+      {mode === "filter" || textFilter.trim() ? (
+        <Box width={contentWidth} paddingLeft={1}>
+          <Box flexShrink={0}>
+            <Text color={COLOR.accent}>{`Filter ${ICON.pointer} `}</Text>
+          </Box>
+          <Box flexGrow={1} minWidth={0}>
+            {mode === "filter" ? (
+              <TextField
+                defaultValue={textFilter}
+                width={Math.max(1, contentWidth - 10)}
+                onChange={setTextFilter}
+                onSubmit={(value) => {
+                  setTextFilter(value.trim());
+                  setMode("list");
+                }}
+                onExitDown={() => {
+                  setTextFilter((current) => current.trim());
+                  setMode("list");
+                }}
+                onExitLeft={() => {
+                  setTextFilter((current) => current.trim());
+                  setMode("list");
+                  setRegion("sidebar");
+                }}
+              />
+            ) : (
+              <Text wrap="truncate-end">{terminalSafeText(textFilter)}</Text>
+            )}
+          </Box>
+        </Box>
+      ) : null}
     </Box>
   );
 }

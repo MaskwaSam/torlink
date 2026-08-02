@@ -113,6 +113,7 @@ function makeStore(
     setSeedFocus: noop,
     startDownload: noop,
     copyMagnet: noop,
+    openDownloadFolder: noop,
     notice: null,
     setNotice: noop,
     quitAll: noop,
@@ -169,8 +170,7 @@ save(
         <Text color={COLOR.alt}>↵</Text>
         <Text dimColor> search</Text>
         <Text dimColor>{`  ${ICON.dot}  `}</Text>
-        <Text dimColor>empty </Text>
-        <Text color={COLOR.alt}>↵</Text>
+        <Text color={COLOR.alt}>⇥/↓</Text>
         <Text dimColor> browse</Text>
         <Text dimColor>{`  ${ICON.dot}  `}</Text>
         <Text color={COLOR.alt}>^c</Text>
@@ -265,7 +265,7 @@ save(
       <Logo />
     </Box>
     <Rule width={RULE_WIDTH} />
-    <Box height={10} marginTop={1}>
+    <Box height={11} marginTop={1}>
       <Sidebar />
       <Box flexGrow={1} flexDirection="column">
         <Downloads />

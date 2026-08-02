@@ -8,5 +8,6 @@ export const fitgirl: Source = {
   label: "FitGirl",
   group: "Games",
   homepage: HOME,
+  reportsHealth: false,
   search: (query, opts) => fetchWordpressRss(HOME, "fitgirl", query, opts),
 };

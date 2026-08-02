@@ -71,5 +71,6 @@ export const subsplease: Source = {
   label: "SubsPlease",
   group: "Anime",
   homepage: "https://subsplease.org",
+  reportsHealth: false,
   search,
 };

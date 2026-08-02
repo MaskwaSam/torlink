@@ -41,5 +41,8 @@ export interface Source {
   label: string;
   group: SourceGroup;
   homepage: string;
+  // True only when seeders: 0 means a known dead swarm. Sources whose feeds
+  // omit health data keep this false so the hide-dead filter never drops them.
+  reportsHealth: boolean;
   search(query: string, opts?: SearchOptions): Promise<TorrentResult[]>;
 }

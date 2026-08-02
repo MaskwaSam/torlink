@@ -11,7 +11,7 @@ export interface SortState {
 export type Sort = SortState | "none";
 
 /**
- * The order the `s` key cycles through: start untouched, then each field
+ * The order the `t` key cycles through: start untouched, then each field
  * ascending then descending, then back to untouched.
  */
 export const SORT_CYCLE: Sort[] = [

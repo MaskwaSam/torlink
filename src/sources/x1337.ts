@@ -5,10 +5,17 @@ import { parseInfoHash } from "./magnet";
 import type { SearchOptions, Source, SourceId, TorrentResult } from "./types";
 
 const HOSTS = ["1337x.to", "1337x.st", "x1337x.ws", "1337xx.to"];
+let workingHostIndex = 0;
 
 const MAX_DETAILS = 8;
 
 const STOP = new Set(["the", "a", "an", "of", "and", "or", "to"]);
+
+export function rotateHosts(hosts: readonly string[], start: number): string[] {
+  if (hosts.length === 0) return [];
+  const normalized = ((start % hosts.length) + hosts.length) % hosts.length;
+  return hosts.map((_, offset) => hosts[(normalized + offset) % hosts.length]!);
+}
 
 type X1337Category = "Movies" | "TV" | "Ebooks" | "Audiobooks" | "Music";
 
@@ -103,11 +110,12 @@ async function search(
   let base = "";
   let html = "";
   let lastError: unknown;
-  for (const host of HOSTS) {
+  for (const host of rotateHosts(HOSTS, workingHostIndex)) {
     try {
       const candidate = `https://${host}`;
       html = await fetchText(`${candidate}${path}`, opts, 2);
       base = candidate;
+      workingHostIndex = HOSTS.indexOf(host);
       break;
     } catch (e) {
       if (opts.signal?.aborted) throw e;
@@ -155,6 +163,7 @@ export const x1337Movies: Source = {
   label: "1337x",
   group: "Movies",
   homepage: "https://1337x.to",
+  reportsHealth: true,
   search: (query, opts = {}) => search(query, "Movies", "x1337-movies", opts),
 };
 
@@ -163,6 +172,7 @@ export const x1337Tv: Source = {
   label: "1337x",
   group: "TV",
   homepage: "https://1337x.to",
+  reportsHealth: true,
   search: (query, opts = {}) => search(query, "TV", "x1337-tv", opts),
 };
 
@@ -171,6 +181,7 @@ export const x1337Books: Source = {
   label: "1337x",
   group: "Books",
   homepage: "https://1337x.to",
+  reportsHealth: true,
   search: (query, opts = {}) => search(query, "Ebooks", "x1337-books", opts),
 };
 
@@ -179,6 +190,7 @@ export const x1337Audiobooks: Source = {
   label: "1337x",
   group: "Audiobooks",
   homepage: "https://1337x.to",
+  reportsHealth: true,
   search: (query, opts = {}) => search(query, "Audiobooks", "x1337-audiobooks", opts),
 };
 
@@ -187,5 +199,6 @@ export const x1337Music: Source = {
   label: "1337x",
   group: "Music",
   homepage: "https://1337x.to",
+  reportsHealth: true,
   search: (query, opts = {}) => search(query, "Music", "x1337-music", opts),
 };

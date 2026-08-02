@@ -14,12 +14,12 @@ export const HELP_GROUPS: HelpGroup[] = [
   {
     title: "Navigate",
     hints: [
-      { keys: "↑ ↓ ← →, h j k l", label: "Navigate content and panes" },
+      { keys: "↑↓←→ / hjkl", label: "Move" },
       { keys: "↵", label: "Open" },
       { keys: "tab", label: "Switch pane" },
       { keys: "esc", label: "Back" },
-      { keys: "o", label: "Download folder" },
-      { keys: "v", label: "Toggle Surfshark requirement" },
+      { keys: "o", label: "Set download folder" },
+      { keys: "v", label: "Surfshark gate" },
       { keys: "q", label: "Quit" },
     ],
   },
@@ -28,8 +28,10 @@ export const HELP_GROUPS: HelpGroup[] = [
     hints: [
       { keys: "/", label: "Edit search" },
       { keys: "↵", label: "Run search" },
-      { keys: "s, ↵", label: "Torrent details/options" },
-      { keys: "t", label: "Sort results" },
+      { keys: "s, ↵", label: "Details/options" },
+      { keys: "t", label: "Sort" },
+      { keys: "f", label: "Filter" },
+      { keys: "z", label: "Hide known dead" },
       { keys: "y", label: "Copy magnet" },
       { keys: "m", label: "Paste magnet" },
     ],
@@ -37,15 +39,16 @@ export const HELP_GROUPS: HelpGroup[] = [
   {
     title: "Downloads",
     hints: [
-      { keys: "↵", label: "Download details" },
+      { keys: "↵", label: "Details" },
       { keys: "p", label: "Pause/resume" },
-      { keys: "a", label: "Toggle auto-resume" },
-      { keys: "e", label: "Toggle auto-stop seeding" },
-      { keys: "del, c", label: "Delete/cancel highlighted item" },
+      { keys: "a", label: "Auto-resume" },
+      { keys: "e", label: "Auto-stop seeding" },
+      { keys: "del, c", label: "Delete/cancel" },
       { keys: "f", label: "Retry failed" },
-      { keys: "r", label: "Verify/rescan highlighted torrent" },
+      { keys: "r", label: "Verify/rescan" },
       { keys: "d", label: "Download again" },
       { keys: "x", label: "Clear recent" },
+      { keys: "shift+o", label: "Open folder" },
     ],
   },
   {
@@ -53,15 +56,16 @@ export const HELP_GROUPS: HelpGroup[] = [
     hints: [
       { keys: "p", label: "Pause/resume" },
       { keys: "r", label: "Verify/rescan" },
-      { keys: "e", label: "Toggle auto-stop seeding" },
+      { keys: "e", label: "Auto-stop seeding" },
       { keys: "c", label: "Remove from list" },
+      { keys: "shift+o", label: "Open folder" },
     ],
   },
   {
     title: "Sources",
     hints: [
-      { keys: "space, ↵", label: "Toggle source" },
-      { keys: "r", label: "Enable all sources" },
+      { keys: "space, ↵", label: "Toggle" },
+      { keys: "r", label: "Enable all" },
     ],
   },
 ];
@@ -73,6 +77,7 @@ const NAVIGATE: Hint = { keys: "↑↓←→", label: "Move" };
 const ALWAYS: Hint = { keys: "?", label: "Keys" };
 
 const SWITCH: Hint = { keys: "tab", label: "Switch" };
+const FOLDER: Hint = { keys: "O", label: "Folder" };
 
 export function footerHints(
   region: Region,
@@ -92,7 +97,7 @@ export function footerHints(
   if (section === "seeding") {
     const label =
       seedFocus === "seeding" ? "Pause" : seedFocus === "missing" ? "Retry" : "Resume";
-    return [{ keys: "p", label }, { keys: "r", label: "Verify" }, { keys: "c", label: "Remove" }, SWITCH, ALWAYS];
+    return [{ keys: "p", label }, { keys: "r", label: "Verify" }, FOLDER, { keys: "c", label: "Remove" }, SWITCH, ALWAYS];
   }
   if (section === "sources") {
     return [
@@ -105,22 +110,23 @@ export function footerHints(
   }
   if (section === "downloads") {
     if (downloadFocus === "paused") {
-      return [{ keys: "↵", label: "Details" }, { keys: "p", label: "Resume" }, { keys: "r", label: "Verify" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
+      return [{ keys: "↵", label: "Details" }, { keys: "p", label: "Resume" }, { keys: "r", label: "Verify" }, FOLDER, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
     }
     if (downloadFocus === "failed") {
-      return [{ keys: "↵", label: "Details" }, { keys: "f", label: "Retry" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
+      return [{ keys: "↵", label: "Details" }, { keys: "f", label: "Retry" }, FOLDER, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
     }
     if (downloadFocus === "recent") {
       return [
         NAVIGATE,
         { keys: "d", label: "Download again" },
+        FOLDER,
         { keys: "del", label: "Delete" },
         { keys: "x", label: "Clear" },
         SWITCH,
         ALWAYS,
       ];
     }
-    return [{ keys: "↵", label: "Details" }, { keys: "p", label: "Pause" }, { keys: "r", label: "Verify" }, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
+    return [{ keys: "↵", label: "Details" }, { keys: "p", label: "Pause" }, { keys: "r", label: "Verify" }, FOLDER, { keys: "del", label: "Delete" }, SWITCH, ALWAYS];
   }
   return [
     NAVIGATE,
@@ -128,6 +134,7 @@ export function footerHints(
     { keys: "d", label: "Download" },
     { keys: "y", label: "Copy" },
     { keys: "t", label: "Sort" },
+    { keys: "f", label: "Filter" },
     { keys: "/", label: "Search" },
     SWITCH,
     ALWAYS,

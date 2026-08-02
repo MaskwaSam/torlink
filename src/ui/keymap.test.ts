@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import { footerHints, HELP_GROUPS } from "./keymap";
 
 describe("search result keymap", () => {
-  it("uses s for torrent details/options and t for sorting", () => {
+  it("preserves details and sorting keys while adding result filters", () => {
     const search = HELP_GROUPS.find((group) => group.title === "Search");
 
     expect(search?.hints).toEqual(
       expect.arrayContaining([
-        { keys: "s, ↵", label: "Torrent details/options" },
-        { keys: "t", label: "Sort results" },
+        { keys: "s, ↵", label: "Details/options" },
+        { keys: "t", label: "Sort" },
+        { keys: "f", label: "Filter" },
+        { keys: "z", label: "Hide known dead" },
       ]),
     );
 
@@ -17,6 +19,7 @@ describe("search result keymap", () => {
       expect.arrayContaining([
         { keys: "s", label: "Details" },
         { keys: "t", label: "Sort" },
+        { keys: "f", label: "Filter" },
       ]),
     );
   });
@@ -24,9 +27,7 @@ describe("search result keymap", () => {
   it("advertises enter details for active downloads", () => {
     const downloads = HELP_GROUPS.find((group) => group.title === "Downloads");
 
-    expect(downloads?.hints).toEqual(
-      expect.arrayContaining([{ keys: "↵", label: "Download details" }]),
-    );
+    expect(downloads?.hints).toEqual(expect.arrayContaining([{ keys: "↵", label: "Details" }]));
 
     expect(footerHints("content", "downloads", "downloading")).toEqual(
       expect.arrayContaining([{ keys: "↵", label: "Details" }]),

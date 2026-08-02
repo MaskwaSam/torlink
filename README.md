@@ -28,11 +28,11 @@ torlink is a torrent finder that lives in your terminal. One search checks a sho
    npx torlnk
    ```
 
-That's the only thing you'll type. torlink opens straight to a search bar: search for what you want, paste in a magnet link or a bare infohash, or just press Enter on an empty box to browse the curated library. From there it's all keypresses, nothing to memorize, and `?` brings up the full list anytime.
+That's the only thing you'll type. torlink opens straight to a search bar: search for what you want, paste in a magnet link or a bare infohash, or press `Enter`, `Tab`, or `Down` on an empty box to browse the curated library. From there it's all keypresses, nothing to memorize, and `?` brings up the full list anytime.
 
 ## Finding something
 
-Type what you're looking for and press Enter. Results stream in from every source as they answer, tagged with size and how many people are sharing each one, so you can see what'll come down fast. Arrow to what you want and press `s` to inspect details and torrent options, or press `d` to save it.
+Type what you're looking for and press Enter. Results stream in from every source as they answer, tagged with size and how many people are sharing each one, so you can see what'll come down fast. Press `f` to filter the current list by multiple words, `z` to hide torrents known to have no seeders, and `t` to change the sort. Arrow to what you want and press `s` or `Enter` to inspect details and torrent options, or press `d` to save it.
 
 <p align="center">
   <img src="preview/browse.svg" alt="torlink's browse view: the sidebar, the search bar, and merged results from every source" style="max-width: 832px; width: 100%; height: auto;">
@@ -40,7 +40,7 @@ Type what you're looking for and press Enter. Results stream in from every sourc
 
 ## Your downloads
 
-Active downloads sit up top with their progress, speed, peers, and time left; when one finishes it drops into Recently downloaded just below, so the list stays tidy. Everything's still there when you come back, and anything interrupted picks up where it left off. Highlight an active download and press `Enter` to inspect its status, progress, speed, folder, hash, magnet, and torrent actions. Highlight a row and press `delete` to remove it from the Downloads page. Press `a` to toggle torrent auto-resume if you want unfinished downloads and active seeds to stay paused after a restart or VPN reconnect. Press `r` on a download or seed to ask Transmission to verify/rescan it. Press `e` to toggle auto-stop seeding if you want finished downloads to stop instead of seeding automatically. Press `v` to toggle the Surfshark VPN requirement.
+Active downloads sit up top with their progress, speed, peers, and time left; when one finishes it drops into Recently downloaded just below, so the list stays tidy. Everything's still there when you come back, and anything interrupted picks up where it left off. Highlight an active download and press `Enter` to inspect its status, progress, speed, folder, hash, magnet, and torrent actions. Press `Shift+O` on a highlighted active, recent, or seeding item to open its folder. Highlight a row and press `delete` to remove it from the Downloads page. Press `a` to toggle torrent auto-resume if you want unfinished downloads and active seeds to stay paused after a restart or VPN reconnect. Press `r` on a download or seed to ask Transmission to verify/rescan it. Press `e` to toggle auto-stop seeding if you want finished downloads to stop instead of seeding automatically. Press `v` to toggle the Surfshark VPN requirement.
 
 Downloads run in the background while you keep searching, so you can queue up as many as you want. TorLink starts its own localhost-only `transmission-daemon` when needed and stops that managed daemon when TorLink exits. They save to your downloads folder, and the Downloads pane keeps tabs on each one. When something finishes it keeps seeding automatically so the next person can find it too, and the Seeding tab lets you pause or stop that anytime.
 

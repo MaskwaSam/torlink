@@ -5,7 +5,7 @@ import type { Hint } from "../keymap";
 export function Footer({ hints }: { hints: Hint[] }) {
   return (
     <Box>
-      <Text>
+      <Text wrap="truncate-end">
         {hints.map((h, i) => (
           <Text key={h.keys + h.label}>
             {i > 0 ? <Text dimColor>{"   "}</Text> : null}

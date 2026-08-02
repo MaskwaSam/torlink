@@ -52,6 +52,7 @@ export function Splash() {
           editing
           placeholder="Search or paste a magnet link…"
           onSubmit={submitQuery}
+          onExitDown={() => submitQuery("")}
         />
       </Box>
       <Box marginTop={1}>
@@ -59,8 +60,7 @@ export function Splash() {
           <Text color={COLOR.alt}>↵</Text>
           <Text dimColor> search</Text>
           <Text dimColor>{`  ${ICON.dot}  `}</Text>
-          <Text dimColor>empty </Text>
-          <Text color={COLOR.alt}>↵</Text>
+          <Text color={COLOR.alt}>⇥/↓</Text>
           <Text dimColor> browse</Text>
           <Text dimColor>{`  ${ICON.dot}  `}</Text>
           <Text color={COLOR.alt}>^c</Text>
