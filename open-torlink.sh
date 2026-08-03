@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# Finder-launched Terminal sessions do not always inherit Homebrew's paths.
+# Keep the user's environment first, then add the standard macOS tool paths.
+TORLINK_TOOL_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}:$TORLINK_TOOL_PATH"
+
 pause_on_error() {
   local code=$?
   if [[ $code -ne 0 ]]; then

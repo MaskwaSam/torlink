@@ -17,10 +17,12 @@
   "scripts": {
     "dev": "tsx src/index.tsx",
     "build": "tsup",
+    "build:macos-app": "node scripts/build-macos-app.cjs",
     "postbuild": "node scripts/postbuild.cjs",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "verify:macos-app": "node scripts/verify-macos-app.cjs",
     "verify:transmission": "tsx scripts/verify-transmission.ts",
     "previews": "tsx scripts/render-previews.tsx",
     "prepublishOnly": "npm run build"

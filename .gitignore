@@ -1,4 +1,5 @@
 node_modules/
 dist/
+macos/TorLink.app/
 .DS_Store
 package-lock.json

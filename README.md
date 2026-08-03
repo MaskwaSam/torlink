@@ -30,6 +30,22 @@ torlink is a torrent finder that lives in your terminal. One search checks a sho
 
 That's the only thing you'll type. torlink opens straight to a search bar: search for what you want, paste in a magnet link or a bare infohash, or press `Enter`, `Tab`, or `Down` on an empty box to browse the curated library. From there it's all keypresses, nothing to memorize, and `?` brings up the complete command list anytime; use Left/Right to page through it.
 
+### macOS app button
+
+To create a double-clickable local app with the TorLink icon:
+
+```sh
+npm run build:macos-app
+npm run verify:macos-app
+open macos/TorLink.app
+```
+
+The app opens `Open TorLink.command` in Terminal, so it uses the same Node,
+Transmission, Surfshark, state, build, and shutdown checks as the command-line
+launcher. You can drag `macos/TorLink.app` into Applications or the Dock. The
+app remembers this checkout's location; rebuild it if you move the repository.
+It is ad-hoc signed for local use, not notarized for distribution.
+
 ## Finding something
 
 Type what you're looking for and press Enter. Results stream in from every source as they answer, tagged with size and how many people are sharing each one, so you can see what'll come down fast. Press `f` to filter the current list by multiple words, `z` to hide torrents known to have no seeders, and `t` to change the sort. Arrow to what you want and press `s` or `Enter` to inspect details and torrent options, or press `d` to save it.
