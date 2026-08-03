@@ -427,7 +427,8 @@ export function App({
       if (editingFolder) return; // the prompt owns input (its own esc + enter)
       if (captureMode === "text") return;
       if (showHelp) {
-        setShowHelp(false);
+        if (key.escape || input === "?") setShowHelp(false);
+        else if (input === "q") quitAll();
         return;
       }
       if (input === "?") {
