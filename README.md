@@ -46,6 +46,38 @@ launcher. You can drag `macos/TorLink.app` into Applications or the Dock. The
 app remembers this checkout's location; rebuild it if you move the repository.
 It is ad-hoc signed for local use, not notarized for distribution.
 
+### Portable macOS app
+
+To build a copy that can move to another computer without this repository,
+Node.js, npm, or Homebrew:
+
+```sh
+npm run build:macos-portable
+npm run verify:macos-portable
+```
+
+The builder downloads the pinned official Node.js archive and caches it under
+`macos/.runtime-cache`; set `TORLINK_NODE_ARCHIVE` to use an existing verified
+archive instead. It also requires the pinned Transmission 4.1.3 Homebrew
+runtime used by this release and rejects a different version, checksum, or
+dynamic-library closure. TorLink itself and its production dependencies are
+built in a temporary clean workspace with `npm ci` from the tracked
+`package-lock.json`. The generated files
+are `release/TorLink.app` and
+`release/TorLink-macOS-Apple-Silicon.zip`. The app carries its Node runtime,
+production packages, Transmission daemon, required Transmission libraries, and
+license texts. A signed release manifest records and verifies the embedded
+runtime and production-package tree. It does not carry the builder's settings, queue, history, torrent
+metadata, or downloaded files; the destination Mac starts with fresh per-user
+state.
+
+The portable build is for Apple-silicon Macs. Its exact minimum macOS version is
+derived from every bundled executable and library and is checked by the
+verifier; a build made from the current Homebrew runtime requires macOS 26.0 or
+later. It is ad-hoc signed rather than notarized, so right-click the copied app
+and choose **Open** the first time if Gatekeeper asks. Surfshark enforcement is
+on by default, just as it is in the normal TorLink launcher.
+
 ## Finding something
 
 Type what you're looking for and press Enter. Results stream in from every source as they answer, tagged with size and how many people are sharing each one, so you can see what'll come down fast. Press `f` to filter the current list by multiple words, `z` to hide torrents known to have no seeders, and `t` to change the sort. Arrow to what you want and press `s` or `Enter` to inspect details and torrent options, or press `d` to save it.

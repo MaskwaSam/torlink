@@ -1,5 +1,6 @@
 node_modules/
 dist/
 macos/TorLink.app/
+macos/.runtime-cache/
+release/
 .DS_Store
-package-lock.json
